@@ -27,6 +27,7 @@
     <div class="lp-secondary-actions">
      <button class="lp-button" id="fb" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m3 9 3-2h15"/></svg>Open folder</button>
      <input id="fd" class="lp-hidden-input" type="file" webkitdirectory directory multiple aria-label="Choose a local folder">
+    <label class="lp-system-choice" for="core-select"><span>System</span><select id="core-select" aria-label="Choose emulator system"><option value="">Auto detect</option><option value="nes">Nintendo Entertainment System</option><option value="snes">Super Nintendo</option><option value="gb">Game Boy / Game Boy Color</option><option value="gba">Game Boy Advance</option><option value="n64">Nintendo 64</option><option value="nds">Nintendo DS</option><option value="segaMD">Sega Mega Drive / Genesis</option><option value="segaMS">Sega Master System</option><option value="segaGG">Sega Game Gear</option><option value="segaCD">Sega CD</option><option value="sega32x">Sega 32X</option><option value="atari5200">Atari 5200</option><option value="atari2600">Atari 2600</option><option value="atari7800">Atari 7800</option><option value="vb">Virtual Boy</option><option value="coleco">ColecoVision</option><option value="lynx">Atari Lynx</option><option value="ngp">Neo Geo Pocket</option><option value="pce">PC Engine / TurboGrafx-16</option><option value="ws">WonderSwan</option><option value="jaguar">Atari Jaguar</option><option value="psx">PlayStation</option><option value="psp">PlayStation Portable</option><option value="segaSaturn">Sega Saturn</option><option value="3do">3DO</option><option value="arcade">Arcade</option><option value="mame">MAME</option><option value="amiga">Amiga</option><option value="c64">Commodore 64</option><option value="c128">Commodore 128</option><option value="pet">Commodore PET</option><option value="plus4">Commodore Plus/4</option><option value="vic20">Commodore VIC-20</option><option value="dos">DOS</option><option value="81">ZX81</option><option value="fuse">ZX Spectrum</option><option value="cap32">Amstrad CPC</option><option value="crocods">Amstrad CPC (CrocoDS)</option><option value="same_cdi">CD-i</option></select></label>
     <label class="lp-zip-label" for="sf"><input id="sf" type="checkbox">Single-file ZIP</label>
     <label class="lp-zip-label" for="local-runtime"><input id="local-runtime" type="checkbox">Local runtimes</label>
     </div>
@@ -64,13 +65,13 @@
   </div>
   <div class="lp-loaded-actions">
    <button id="run" class="lp-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></svg>Restart</button>
-   <button id="fs" class="lp-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>Fullscreen</button>
+  <button id="fs" class="lp-button" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg><span id="fs-label">Fullscreen</span></button>
    <button id="ctl" class="lp-button" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span id="ctl-label">Add touch controls</span></button>
    <button id="dl" class="lp-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg>Download .html</button>
    <button id="cp" class="lp-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>Copy code</button>
   </div>
   <p id="runtime-help" class="lp-runtime-help" hidden>Controller configuration and save states are available in the emulator menu.</p>
-  <div class="lp-player"><iframe id="fr" title="Local title player" allow="autoplay; fullscreen; gamepad"></iframe></div>
+  <div id="player" class="lp-player"><iframe id="fr" title="Local title player" allow="autoplay; fullscreen; gamepad"></iframe><button id="fs-exit" class="lp-fullscreen-exit" type="button" aria-label="Exit fullscreen" title="Exit fullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></div>
   <textarea id="code" class="lp-source" readonly aria-label="Local title source code" placeholder="Source code is available for supported HTML titles."></textarea>
  </section>
 </main>
@@ -100,15 +101,35 @@ window.__RARW="AGFzbQEAAAABtQInYAF/AX9gAn9/AX9gA39/fwF/YAF/AGADf39/AGACf38AYAN/f
 </script>
 <script>
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
-try{$('local-runtime').checked=localStorage.getItem('retrotitles-local-runtimes')==='true'}catch(e){}
+let runtimePreference=null;
+try{runtimePreference=localStorage.getItem('retrotitles-local-runtimes');if(runtimePreference!==null)$('local-runtime').checked=runtimePreference==='true'}catch(e){}
 $('runtime-note').hidden=!$('local-runtime').checked;
-$('local-runtime').onchange=()=>{$('runtime-note').hidden=!runtimeIsLocal();try{localStorage.setItem('retrotitles-local-runtimes',String(runtimeIsLocal()))}catch(e){}};
+$('local-runtime').onchange=()=>{$('runtime-note').hidden=!runtimeIsLocal();runtimePreference=String(runtimeIsLocal());try{localStorage.setItem('retrotitles-local-runtimes',runtimePreference)}catch(e){}};
 const msg=t=>$('msg').textContent=t;
 const b64=buf=>{const u=new Uint8Array(buf);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
 const esc=s=>s.replace(/<\/script/gi,'<\\/script');
 const HEAD='<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>retrotitles</title>';
-const CORES={nes:'nes',fds:'nes',smc:'snes',sfc:'snes',gb:'gb',gbc:'gb',gba:'gba',n64:'n64',z64:'n64',v64:'n64',md:'segaMD',gen:'segaMD',smd:'segaMD',sms:'segaMS',gg:'segaGG',nds:'nds',a26:'atari2600',pce:'pce'};
+const CORES={
+ a52:'atari5200',a26:'atari2600',a78:'atari7800',vb:'vb',vboy:'vb',
+ nes:'nes',fds:'nes',unif:'nes',unf:'nes',smc:'snes',sfc:'snes',swc:'snes',fig:'snes',bs:'snes',st:'snes',
+ gb:'gb',gbc:'gb',dmg:'gb',gba:'gba',n64:'n64',z64:'n64',v64:'n64',u1:'n64',ndd:'n64',nds:'nds',
+ md:'segaMD',mdx:'segaMD',gen:'segaMD',smd:'segaMD',sms:'segaMS',gg:'segaGG',sg:'segaMS',sgd:'segaMS','32x':'sega32x',
+ col:'coleco',cv:'coleco',lnx:'lynx',ngp:'ngp',ngc:'ngp',pce:'pce',ws:'ws',wsc:'ws',pc2:'ws',j64:'jaguar',jag:'jaguar',
+ adf:'amiga',adz:'amiga',dms:'amiga',fdi:'amiga',ipf:'amiga',hdf:'amiga',hdz:'amiga',lha:'amiga',uae:'amiga',
+ d64:'c64',d71:'c64',d80:'c64',d81:'c64',d82:'c64',g64:'c64',g41:'c64',x64:'c64',nib:'c64',d2m:'c64',d4m:'c64',t64:'c64',tap:'c64',tcrt:'c64',prg:'c64',p00:'c64',crt:'c64',cmd:'c64',vfl:'c64',vsf:'c64',
+ dsk:'cap32',sna:'cap32',cdt:'cap32',cpr:'cap32',voc:'cap32',kcr:'crocods',
+ p:'81',z80:'fuse',rzx:'fuse',scl:'fuse',trd:'fuse',wad:'prboom',iwad:'prboom',pwad:'prboom',
+ cso:'psp',prx:'psp',elf:'psp',conf:'dos'
+};
 const runtimeIsLocal=()=>$('local-runtime').checked;
+const LOCAL_RUNTIME_FILES=['runtime/jszip.min.js','runtime/ruffle/ruffle.js','runtime/ruffle/172de42e6619eac8f371.wasm','runtime/ruffle/878d548199cddef07035.wasm','runtime/pyodide/pyodide.js','runtime/pyodide/pyodide.asm.js','runtime/pyodide/pyodide.asm.wasm','runtime/pyodide/python_stdlib.zip','runtime/pyodide/pyodide-lock.json','runtime/emulatorjs/data/loader.js','runtime/emulatorjs/data/emulator.min.js','runtime/emulatorjs/data/emulator.min.css','runtime/emulatorjs/data/src/emulator.js','runtime/emulatorjs/data/cores/cores.json','runtime/emulatorjs/data/cores/fceumm-legacy-wasm.data','runtime/emulatorjs/data/cores/ppsspp-thread-wasm.data','runtime/emulatorjs/data/cores/dosbox_pure-thread-wasm.data'];
+if(runtimePreference===null&&window.isSecureContext&&typeof fetch==='function'){
+ Promise.all(LOCAL_RUNTIME_FILES.map(path=>fetch(path,{method:'HEAD'}))).then(responses=>{
+  if(runtimePreference!==null||responses.some(response=>!response.ok))return;
+  $('local-runtime').checked=true;$('runtime-note').hidden=false;
+  try{localStorage.setItem('retrotitles-local-runtimes','true')}catch(e){}
+ }).catch(()=>{});
+}
 
 const wrapJS=js=>HEAD+'<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;margin:0 auto;max-width:100%}</style></head><body><canvas id="canvas" width="800" height="600"></canvas><script>\n'+esc(js)+'\n<\/script></body></html>';
 
@@ -377,35 +398,70 @@ function show(open){
 let touchControlsOn=false;
 function resetTouchControls(){touchControlsOn=false;const b=$('ctl');b.setAttribute('aria-pressed','false');b.classList.remove('lp-touch-active');$('ctl-label').textContent='Add touch controls'}
 function play(){resetTouchControls();const f=$('fr');if(streamUrl&&!html){f.removeAttribute('srcdoc');f.src='about:blank';setTimeout(()=>f.src=streamUrl,60)}else{f.removeAttribute('src');f.srcdoc=html}}
+let softFullscreen=false,fullscreenScrollY=0;
+const hasNativeFullscreen=()=>Boolean(document.fullscreenElement||document.webkitFullscreenElement);
+function syncFullscreenControls(){const active=softFullscreen||hasNativeFullscreen();$('fs').setAttribute('aria-pressed',String(active));$('fs-label').textContent=active?'Exit fullscreen':'Fullscreen'}
+function setSoftFullscreen(active){
+ softFullscreen=active;
+ $('stage').classList.toggle('lp-fullscreen-active',active);
+ $('player').classList.toggle('lp-soft-fullscreen',active);
+ document.documentElement.classList.toggle('lp-fullscreen-lock',active);
+ document.body.classList.toggle('lp-fullscreen-lock',active);
+ if(!active)window.scrollTo(0,fullscreenScrollY);
+ syncFullscreenControls();
+}
+async function exitFullscreen(){
+ if(softFullscreen)setSoftFullscreen(false);
+ try{
+  if(document.fullscreenElement&&document.exitFullscreen)await document.exitFullscreen();
+  else if(document.webkitFullscreenElement&&document.webkitExitFullscreen)document.webkitExitFullscreen();
+ }catch(e){}
+ syncFullscreenControls();
+ $('fs').focus();
+}
+async function enterFullscreen(){
+ const player=$('player'),request=player.requestFullscreen||player.webkitRequestFullscreen;
+ if(request){
+  try{await request.call(player);if(hasNativeFullscreen()){syncFullscreenControls();return}}catch(e){}
+ }
+ fullscreenScrollY=window.scrollY||window.pageYOffset||0;
+ setSoftFullscreen(true);
+ $('fs-exit').focus();
+}
+async function toggleFullscreen(){if(softFullscreen||hasNativeFullscreen())await exitFullscreen();else await enterFullscreen()}
+document.addEventListener('fullscreenchange',syncFullscreenControls);
+document.addEventListener('webkitfullscreenchange',syncFullscreenControls);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&softFullscreen){e.preventDefault();exitFullscreen()}});
 
 async function load(file){
  if(!file)return;const ext=file.name.split('.').pop().toLowerCase();
- $('runtime-help').hidden=!Boolean(CORES[ext]);
+ const selectedCore=$('core-select').value||CORES[ext],archiveZip=ext==='zip'&&!selectedCore;
+ $('runtime-help').hidden=!Boolean(selectedCore);
  $('stage').style.display='none';resetTouchControls();name=file.name.replace(/\.[^.]+$/,'')||'Local title';setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Processing '+file.name+'…');
  try{let open=false,ctl=true;
-  if(CORES[ext]&&file.size>=STREAM_THRESHOLD){
-   await streamLocalFile(file);html=addCtl(romPage(streamUrl,CORES[ext],name,true));portable=false;
+  if(selectedCore&&file.size>=STREAM_THRESHOLD){
+  await streamLocalFile(file);html=addCtl(romPage(streamUrl,selectedCore,name,true));portable=false;
    msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showStream(true,html);return
   }
   if(ext==='swf'&&file.size>=STREAM_THRESHOLD){
    await streamLocalFile(file);html=addCtl(swfPage(streamUrl,true));portable=false;
    msg('Local file ready ('+sizeLabel(file.size)+'), served in chunks.');showStream(true,html);return
   }
-  if(ext==='zip'&&file.size>=STREAM_THRESHOLD){
+  if(archiveZip&&file.size>=STREAM_THRESHOLD){
    if(!canSW())throw new Error('This large ZIP needs streaming. Open the page over HTTPS or localhost; a single-file export would use too much memory.')
    if(!await tryStream(file))throw new Error('Could not start streaming this ZIP. Open the page over HTTPS or localhost and try again.')
    msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return
   }
   if(ext==='rar'&&file.size>=STREAM_THRESHOLD)throw new Error('Large RAR extraction needs the whole archive in memory. Extract it on your device and use Folder mode, or use a ZIP archive.')
-  if(ext==='zip'&&!$('sf').checked&&await tryStream(file)){msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return}
+  if(archiveZip&&!$('sf').checked&&await tryStream(file)){msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return}
   if(file.size>4e8)msg('Large file ('+sizeLabel(file.size)+'). Processing may use substantial memory.');
-  if(ext==='zip')html=await fromZip(await file.arrayBuffer()),open=!portable;
+  if(archiveZip)html=await fromZip(await file.arrayBuffer()),open=!portable;
   else if(ext==='rar')html=await fromRar(await file.arrayBuffer()),open=!portable;
   else if(ext==='js')html=wrapJS(await file.text());
   else if(ext==='html'||ext==='htm')html=await file.text();
   else if(ext==='swf')html=swfPage(b64(await file.arrayBuffer()));
   else if(ext==='py')html=pyPage(await file.text()),open=true;
-  else if(CORES[ext])html=romPage(b64(await file.arrayBuffer()),CORES[ext],name),open=true;
+  else if(selectedCore)html=romPage(b64(await file.arrayBuffer()),selectedCore,name),open=true;
   else throw new Error('Unsupported file type: .'+ext);
   if(ctl)html=addCtl(html);$('ctl').disabled=!ctl;
   msg('Ready: '+file.name+(portable?'':' (Unity builds run here but can\u2019t be exported as a single file; host the original folder instead)'));
@@ -421,7 +477,8 @@ $('drop').ondragleave=()=>$('drop').classList.remove('is-over');
 $('drop').ondrop=e=>{e.preventDefault();$('drop').classList.remove('is-over');const files=e.dataTransfer.files;if(files.length!==1){msg(files.length?'Drop one title file at a time.':'No file was found in that drop.');return}load(files[0])};
 $('run').onclick=play;
 $('ctl').onclick=()=>{touchControlsOn=!touchControlsOn;$('ctl').setAttribute('aria-pressed',String(touchControlsOn));$('ctl').classList.toggle('lp-touch-active',touchControlsOn);$('ctl-label').textContent=touchControlsOn?'Hide touch controls':'Add touch controls';try{$('fr').contentWindow.postMessage('gr-toggle','*')}catch(e){}};
-$('fs').onclick=()=>$('fr').requestFullscreen&&$('fr').requestFullscreen();
+$('fs').onclick=toggleFullscreen;
+$('fs-exit').onclick=exitFullscreen;
 $('dl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=name+'-runnable.html';a.click()};
 $('cp').onclick=async()=>{try{await navigator.clipboard.writeText(html);msg('Copied to clipboard.')}catch(e){msg('Copy blocked by the browser. Use Download instead.')}};
 </script></body></html>

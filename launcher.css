@@ -252,6 +252,8 @@ html, body { margin: 0; min-height: 100%; }
           margin: 0;
           accent-color: #668342;
         }
+        .lp-system-choice { display: inline-flex; align-items: center; gap: 7px; color: #64766b; font-size: 12px; }
+        .lp-system-choice select { max-width: min(250px, 52vw); min-height: 34px; padding: 0 9px; border: 1px solid #d6dbce; border-radius: 7px; background: #fbfaf5; color: #34574f; font-size: 12px; }
         .lp-runtime-note { margin: 0 12px 9px; color: #64766b; font-size: 11px; line-height: 1.5; }
         .lp-runtime-note[hidden] { display: none; }
         .lp-private-note {
@@ -460,6 +462,43 @@ html, body { margin: 0; min-height: 100%; }
           border: 0;
           background: #102923;
         }
+        .lp-player.lp-soft-fullscreen, .lp-player:fullscreen, .lp-player:-webkit-full-screen {
+          position: fixed;
+          z-index: 9999;
+          inset: 0;
+          width: 100%;
+          height: 100vh;
+          height: 100dvh;
+          min-height: 0;
+          border: 0;
+          border-radius: 0;
+          background: #000;
+        }
+        .lp-loaded.lp-fullscreen-active { animation: none !important; transform: none !important; }
+        .lp-player.lp-soft-fullscreen iframe, .lp-player:fullscreen iframe, .lp-player:-webkit-full-screen iframe {
+          width: 100%;
+          height: 100%;
+          min-height: 0;
+        }
+        .lp-fullscreen-lock { overflow: hidden !important; }
+        .lp-fullscreen-exit {
+          position: absolute;
+          z-index: 1;
+          top: calc(12px + env(safe-area-inset-top, 0px));
+          right: calc(12px + env(safe-area-inset-right, 0px));
+          display: none;
+          width: 42px;
+          height: 42px;
+          padding: 0;
+          border: 1px solid rgba(255, 255, 255, .36);
+          border-radius: 50%;
+          background: rgba(0, 0, 0, .62);
+          color: #fff;
+          cursor: pointer;
+        }
+        .lp-soft-fullscreen .lp-fullscreen-exit { display: grid; place-items: center; }
+        .lp-fullscreen-exit svg { width: 20px; height: 20px; }
+        .lp-fullscreen-exit:focus-visible { outline: 3px solid #c2d86a; outline-offset: 3px; }
         .lp-player-empty {
           position: absolute;
           inset: 0;
@@ -570,6 +609,8 @@ html, body { margin: 0; min-height: 100%; }
           .lp-launch-card { padding: 8px; border-radius: 17px; }
           .lp-drop { min-height: 224px; padding: 24px 16px; }
           .lp-action-row { align-items: flex-start; flex-direction: column; padding: 12px 9px 3px; }
+          .lp-system-choice { align-items: flex-start; flex-direction: column; gap: 4px; }
+          .lp-system-choice select { max-width: 100%; }
           .lp-private-note { padding: 12px 9px 9px; }
           .lp-aside { padding: 20px; border-radius: 17px; }
           .lp-benefits { grid-template-columns: 1fr; gap: 13px; }
