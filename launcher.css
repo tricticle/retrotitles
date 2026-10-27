@@ -252,6 +252,8 @@ html, body { margin: 0; min-height: 100%; }
           margin: 0;
           accent-color: #668342;
         }
+        .lp-runtime-note { margin: 0 12px 9px; color: #64766b; font-size: 11px; line-height: 1.5; }
+        .lp-runtime-note[hidden] { display: none; }
         .lp-private-note {
           display: flex;
           align-items: flex-start;
@@ -365,6 +367,17 @@ html, body { margin: 0; min-height: 100%; }
           font-size: 12px;
         }
         .lp-message:empty { visibility: hidden; }
+        .lp-library { margin-top: 20px; padding: 18px 3px 0; border-top: 1px solid rgba(22, 60, 54, .12); }
+        .lp-library[hidden] { display: none; }
+        .lp-library-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .lp-library-heading .lp-aside-label { margin-bottom: 4px; }
+        .lp-library-heading h2 { margin: 0; font-size: 18px; }
+        .lp-library-empty { margin: 12px 0 0; color: #75847a; font-size: 12px; }
+        .lp-library-list { margin: 12px 0 0; padding: 0; list-style: none; }
+        .lp-library-row { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid #e1e4dc; }
+        .lp-library-name { min-width: 0; overflow: hidden; color: #34574f; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+        .lp-library-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+        .lp-library-actions .lp-button { min-height: 32px; }
         .lp-loaded {
           margin-top: 42px;
           padding: 14px;
@@ -562,6 +575,8 @@ html, body { margin: 0; min-height: 100%; }
           .lp-benefits { grid-template-columns: 1fr; gap: 13px; }
           .lp-benefit:last-child { display: grid; }
           .lp-bottom { align-items: flex-start; flex-direction: column; gap: 6px; margin-top: 28px; }
+          .lp-library { padding-right: 2px; padding-left: 2px; }
+          .lp-library-row { align-items: flex-start; flex-direction: column; gap: 7px; padding: 10px 0; }
           .lp-loaded { padding: 10px; }
           .lp-loaded-heading { align-items: flex-start; }
           .lp-loaded-actions { gap: 6px; }
