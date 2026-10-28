@@ -7,10 +7,10 @@ retrotitles is a browser-based launcher for running personal game files and smal
 ## Features
 
 - Open a single file, a folder, or a ZIP/RAR archive; drag and drop a single title file.
-- Run HTML/HTM, JavaScript canvas, and Python titles, plus SWF files through Ruffle.
+- Run HTML/HTM, JavaScript canvas, and Python titles, plus SWF files through Ruffle. Stream Unity WebGL and Unreal Engine browser builds from a folder or ZIP; native desktop/console builds are not supported.
 - Run systems in the EmulatorJS 4.2.3 bundle: NES, SNES, Game Boy, GBA, N64, DS, Sega consoles, Atari 2600/5200/7800, PlayStation, PSP, Saturn, 3DO, Jaguar, PC Engine, WonderSwan, Neo Geo Pocket, ColecoVision, Amiga, Commodore, DOS, ZX Spectrum/ZX81, Amstrad CPC, CD-i, and arcade/MAME cores.
 - Select a system manually for ambiguous formats such as `.bin`, `.cue`, `.iso`, `.chd`, and arcade `.zip` files; automatic extension detection is best-effort.
-- Stream large ROMs and multi-file ZIP/folder titles on demand, subject to browser and service-worker support.
+- Stream large ROMs and multi-file ZIP/folder titles on demand, subject to browser and service-worker support. Unity and Unreal browser builds use streaming so their separate and compressed assets can load correctly.
 - Add configurable touch controls, restart, use fullscreen, and export supported titles as a standalone HTML file.
 - Save local file handles to a title library and reopen them after granting browser permission.
 - Use browser gamepads and the embedded emulator menu for controller mapping and save states where supported by that core. Export a `.state` file to the device with **Download**, import it later with **Load State**, or store save states in browser storage with **Keep in Browser**.

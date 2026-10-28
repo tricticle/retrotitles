@@ -13,7 +13,7 @@
 <main class="lp-main">
  <p class="lp-kicker">A player for your own files</p>
  <h1 class="lp-heading">Your titles, <em>right where you left them.</em></h1>
- <p class="lp-intro">Bring a local file or folder. Nothing gets uploaded, and large files are read only when the player asks for them.</p>
+ <p class="lp-intro">Bring a local file, folder, or browser game build. Nothing gets uploaded, and large files are read only when the player asks for them.</p>
  <div class="lp-layout">
   <section class="lp-launch-card" aria-label="Choose a local title">
    <div id="drop" class="lp-drop" aria-label="Choose a local file or drop it here">
@@ -373,6 +373,14 @@ async function streamFrom(entries){
  };
  streamUrl=new URL('__game/'+providerId+'/'+indexRel.split('/').map(encodeURIComponent).join('/'),location.href).href;
 }
+function engineWebExport(entries){
+ const names=entries.map(entry=>entry.name);
+ if(!names.some(path=>/(^|\/)index\.html?$/i.test(path)))return'';
+ if(names.some(path=>/\.loader\.js$/i.test(path)))return'Unity';
+ const hasWasm=names.some(path=>/\.wasm(?:\.(?:br|gz))?$/i.test(path));
+ const hasPayload=names.some(path=>/\.(?:pak|data)(?:\.(?:br|gz))?$/i.test(path));
+ return hasWasm&&hasPayload?'Unreal Engine':'';
+}
 async function tryStream(file){
  if(!canSW())return false;
  try{await streamFrom(await zipEntries(file))}catch(e){if(e.noSW)return false;throw e}
@@ -443,6 +451,13 @@ async function load(file){
  $('runtime-help').hidden=!Boolean(selectedCore);
  $('stage').style.display='none';resetTouchControls();name=file.name.replace(/\.[^.]+$/,'')||'Local title';setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Processing '+file.name+'…');
  try{let open=false,ctl=true;
+  if(archiveZip&&$('sf').checked){
+   const entries=await zipEntries(file),engine=engineWebExport(entries);
+   if(engine){
+    if(!canSW())throw new Error(engine+' browser builds need streaming. Open this page over HTTPS or localhost.');
+    await streamFrom(entries);msg('Streaming '+engine+' browser build from '+file.name+'. Keep this page open while playing.');showStream();return
+   }
+  }
   if(selectedCore&&file.size>=STREAM_THRESHOLD){
   await streamLocalFile(file);html=addCtl(romPage(streamUrl,selectedCore,name,true));portable=false;
    msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showStream(true,html);return
