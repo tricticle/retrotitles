@@ -105,7 +105,7 @@ let runtimePreference=null;
 try{runtimePreference=localStorage.getItem('retrotitles-local-runtimes');if(runtimePreference!==null)$('local-runtime').checked=runtimePreference==='true'}catch(e){}
 $('runtime-note').hidden=!$('local-runtime').checked;
 $('local-runtime').onchange=()=>{$('runtime-note').hidden=!runtimeIsLocal();runtimePreference=String(runtimeIsLocal());try{localStorage.setItem('retrotitles-local-runtimes',runtimePreference)}catch(e){}};
-const msg=t=>$('msg').textContent=t;
+const msg=(text,busy=false)=>{$('msg').textContent=text;$('msg').setAttribute('aria-busy',String(busy))};
 const b64=buf=>{const u=new Uint8Array(buf);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
 const esc=s=>s.replace(/<\/script/gi,'<\\/script');
 const HEAD='<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>retrotitles</title>';
@@ -246,7 +246,7 @@ const CTRL_FN=function(){
 const addCtl=h=>{const s='<script>('+CTRL_FN.toString()+')()<\/script>';let i=-1,m;const re=/<\/body>/gi;while((m=re.exec(h)))i=m.index;return i<0?h+s:h.slice(0,i)+s+h.slice(i)};
 
 
-let streamUrl=null,provider=null,providerId=null;
+let streamUrl=null,provider=null,providerId=null,loadSequence=0;
 const canSW=()=>'serviceWorker' in navigator&&window.isSecureContext;
 const newProviderId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const STREAM_THRESHOLD=32*1024*1024;
@@ -331,13 +331,15 @@ if(canUseLibrary()){
  $('library-add').onclick=addLibraryTitle;
  renderLibrary().catch(error=>msg('Could not load title library: '+error.message));
 }
-async function streamLocalFile(file){
+async function streamLocalFile(file,loadId=loadSequence){
  if(!canSW())throw new Error('Streaming large local files needs this page opened over HTTPS or localhost.');
  try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready}
  catch(e){throw new Error('Could not start the local file streaming service. Open this page over HTTPS or localhost.')}
+ if(loadId!==loadSequence)return false;
  providerId=newProviderId();
  provider=async path=>path==='game.bin'?{blob:file,type:file.type||mimeOf(file.name)}:{};
  streamUrl=new URL('__game/'+providerId+'/game.bin',location.href).href;
+ return true;
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.onmessage=async e=>{
  if(!e.data||typeof e.data.path!=='string'||!e.ports[0])return;
@@ -349,9 +351,12 @@ async function zipEntries(file){
  const zr=new window.__zip.ZipReader(new window.__zip.BlobReader(file));
  return (await zr.getEntries()).filter(e=>!e.directory).map(e=>({name:e.filename,get:()=>e.getData(new window.__zip.BlobWriter())}));
 }
-async function streamFrom(entries){
+function findStreamIndex(names){
+ return names.filter(n=>/(^|\/)index\.html?$/i.test(n)).sort((a,b)=>a.split('/').length-b.split('/').length)[0]||'';
+}
+async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
  const names=entries.map(e=>e.name).filter(n=>!n.startsWith('__MACOSX'));
- const idx=names.filter(n=>/(^|\/)index\.html?$/i.test(n)).sort((a,b)=>a.split('/').length-b.split('/').length)[0];
+ const idx=indexOverride||findStreamIndex(names);
  if(!idx)throw new Error('No start page was found in this folder or archive.');
  const base=idx.includes('/')?idx.slice(0,idx.lastIndexOf('/')+1):'';
  const map=new Map(),low=new Map();
@@ -360,6 +365,7 @@ async function streamFrom(entries){
  const cache=new Map();
  try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready}
  catch(e){throw Object.assign(new Error('Service worker unavailable'),{noSW:true})}
+ if(loadId!==loadSequence)return false;
  providerId=newProviderId();
  provider=async path=>{
   path=norm(path)||indexRel;
@@ -372,19 +378,25 @@ async function streamFrom(entries){
   return{blob,type,encoding:enc};
  };
  streamUrl=new URL('__game/'+providerId+'/'+indexRel.split('/').map(encodeURIComponent).join('/'),location.href).href;
+ return true;
 }
 function engineWebExport(entries){
  const names=entries.map(entry=>entry.name);
- if(!names.some(path=>/(^|\/)index\.html?$/i.test(path)))return'';
- if(names.some(path=>/\.loader\.js$/i.test(path)))return'Unity';
- const hasWasm=names.some(path=>/\.wasm(?:\.(?:br|gz))?$/i.test(path));
+ const indexes=names.filter(path=>/(^|\/)index\.html?$/i.test(path));
+ if(!indexes.length)return null;
+ const indexFor=asset=>indexes.filter(index=>{
+  const dir=index.includes('/')?index.slice(0,index.lastIndexOf('/')+1):'';
+  return asset.startsWith(dir);
+ }).sort((a,b)=>b.lastIndexOf('/')-a.lastIndexOf('/'))[0]||findStreamIndex(names);
+ const unityLoader=names.find(path=>/\.loader\.js$/i.test(path));
+ if(unityLoader)return{name:'Unity',index:indexFor(unityLoader)};
+ const wasm=names.find(path=>/\.wasm(?:\.(?:br|gz))?$/i.test(path));
  const hasPayload=names.some(path=>/\.(?:pak|data)(?:\.(?:br|gz))?$/i.test(path));
- return hasWasm&&hasPayload?'Unreal Engine':'';
+ return wasm&&hasPayload?{name:'Unreal Engine',index:indexFor(wasm)}:null;
 }
-async function tryStream(file){
+async function tryStream(file,loadId=loadSequence,entries=null){
  if(!canSW())return false;
- try{await streamFrom(await zipEntries(file))}catch(e){if(e.noSW)return false;throw e}
- return true;
+ try{return await streamFrom(entries||await zipEntries(file),loadId)}catch(e){if(e.noSW)return false;throw e}
 }
 function showStream(controls=true,page=''){
  portable=false;html=page;
@@ -394,12 +406,13 @@ function showStream(controls=true,page=''){
  $('stage').style.display='block';play();
 }
 async function loadFolder(files){
- if(!files.length)return;streamUrl=null;name=(files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';$('stage').style.display='none';resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Reading folder…');
+ if(!files.length)return;const loadId=++loadSequence,folderName=(files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';streamUrl=null;name=folderName;$('stage').style.display='none';resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Reading folder…',true);
  try{
   if(!canSW())throw new Error('Folder mode needs this page to be opened over https or localhost (not a file:// page).');
-  await streamFrom(files.map(f=>({name:f.webkitRelativePath||f.name,get:async()=>f})));
+  const streamed=await streamFrom(files.map(f=>({name:f.webkitRelativePath||f.name,get:async()=>f})),loadId);
+  if(!streamed||loadId!==loadSequence)return;
   msg('Streaming folder ('+files.length+' files). Files are read on demand.');showStream();
- }catch(e){msg(e.message)}
+ }catch(e){if(loadId===loadSequence)msg(e.message)}
 }
 function show(open){
  $('code').value=html.length>1.5e6?'/* Code is large ('+Math.round(html.length/1e6)+' MB, mostly embedded title data). Use Download or Copy. */':html;
@@ -446,46 +459,63 @@ document.addEventListener('webkitfullscreenchange',syncFullscreenControls);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&softFullscreen){e.preventDefault();exitFullscreen()}});
 
 async function load(file){
- if(!file)return;const ext=file.name.split('.').pop().toLowerCase();
+ if(!file)return;
+ const loadId=++loadSequence,ext=file.name.split('.').pop().toLowerCase();
+ const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
  const selectedCore=$('core-select').value||CORES[ext],archiveZip=ext==='zip'&&!selectedCore;
  $('runtime-help').hidden=!Boolean(selectedCore);
- $('stage').style.display='none';resetTouchControls();name=file.name.replace(/\.[^.]+$/,'')||'Local title';setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Processing '+file.name+'…');
- try{let open=false,ctl=true;
-  if(archiveZip&&$('sf').checked){
-   const entries=await zipEntries(file),engine=engineWebExport(entries);
+ $('stage').style.display='none';resetTouchControls();name=titleName;setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Processing '+file.name+'…',true);
+ try{
+  let open=false,ctl=true,entries=null,loadedHtml='';
+  if(archiveZip){
+   entries=await zipEntries(file);
+   if(loadId!==loadSequence)return;
+   const engine=engineWebExport(entries);
    if(engine){
-    if(!canSW())throw new Error(engine+' browser builds need streaming. Open this page over HTTPS or localhost.');
-    await streamFrom(entries);msg('Streaming '+engine+' browser build from '+file.name+'. Keep this page open while playing.');showStream();return
+    if(!canSW())throw new Error(engine.name+' browser builds need streaming. Open this page over HTTPS or localhost.');
+    const streamed=await streamFrom(entries,loadId,engine.index);
+    if(!streamed||loadId!==loadSequence)return;
+    msg('Streaming '+engine.name+' browser build from '+file.name+'. Keep this page open while playing.');showStream();return;
    }
   }
   if(selectedCore&&file.size>=STREAM_THRESHOLD){
-  await streamLocalFile(file);html=addCtl(romPage(streamUrl,selectedCore,name,true));portable=false;
-   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showStream(true,html);return
+   if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
+   html=addCtl(romPage(streamUrl,selectedCore,titleName,true));portable=false;
+   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showStream(true,html);return;
   }
   if(ext==='swf'&&file.size>=STREAM_THRESHOLD){
-   await streamLocalFile(file);html=addCtl(swfPage(streamUrl,true));portable=false;
-   msg('Local file ready ('+sizeLabel(file.size)+'), served in chunks.');showStream(true,html);return
+   if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
+   html=addCtl(swfPage(streamUrl,true));portable=false;
+   msg('Local file ready ('+sizeLabel(file.size)+'), served in chunks.');showStream(true,html);return;
   }
   if(archiveZip&&file.size>=STREAM_THRESHOLD){
-   if(!canSW())throw new Error('This large ZIP needs streaming. Open the page over HTTPS or localhost; a single-file export would use too much memory.')
-   if(!await tryStream(file))throw new Error('Could not start streaming this ZIP. Open the page over HTTPS or localhost and try again.')
-   msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return
+   if(!canSW())throw new Error('This large ZIP needs streaming. Open this page over HTTPS or localhost; a single-file export would use too much memory.');
+   const streamed=await tryStream(file,loadId,entries);
+   if(loadId!==loadSequence)return;
+   if(!streamed)throw new Error('Could not start streaming this ZIP. Open the page over HTTPS or localhost and try again.');
+   msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return;
   }
-  if(ext==='rar'&&file.size>=STREAM_THRESHOLD)throw new Error('Large RAR extraction needs the whole archive in memory. Extract it on your device and use Folder mode, or use a ZIP archive.')
-  if(archiveZip&&!$('sf').checked&&await tryStream(file)){msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return}
-  if(file.size>4e8)msg('Large file ('+sizeLabel(file.size)+'). Processing may use substantial memory.');
-  if(archiveZip)html=await fromZip(await file.arrayBuffer()),open=!portable;
-  else if(ext==='rar')html=await fromRar(await file.arrayBuffer()),open=!portable;
-  else if(ext==='js')html=wrapJS(await file.text());
-  else if(ext==='html'||ext==='htm')html=await file.text();
-  else if(ext==='swf')html=swfPage(b64(await file.arrayBuffer()));
-  else if(ext==='py')html=pyPage(await file.text()),open=true;
-  else if(selectedCore)html=romPage(b64(await file.arrayBuffer()),selectedCore,name),open=true;
+  if(ext==='rar'&&file.size>=STREAM_THRESHOLD)throw new Error('Large RAR extraction needs the whole archive in memory. Extract it on your device and use Folder mode, or use a ZIP archive.');
+  if(archiveZip&&!$('sf').checked){
+   const streamed=await tryStream(file,loadId,entries);
+   if(loadId!==loadSequence)return;
+   if(streamed){msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return;}
+  }
+  if(file.size>4e8)msg('Large file ('+sizeLabel(file.size)+'). Processing may use substantial memory.',true);
+  if(archiveZip){loadedHtml=await fromZip(await file.arrayBuffer());open=!portable;}
+  else if(ext==='rar'){loadedHtml=await fromRar(await file.arrayBuffer());open=!portable;}
+  else if(ext==='js')loadedHtml=wrapJS(await file.text());
+  else if(ext==='html'||ext==='htm')loadedHtml=await file.text();
+  else if(ext==='swf')loadedHtml=swfPage(b64(await file.arrayBuffer()));
+  else if(ext==='py'){loadedHtml=pyPage(await file.text());open=true;}
+  else if(selectedCore){loadedHtml=romPage(b64(await file.arrayBuffer()),selectedCore,titleName);open=true;}
   else throw new Error('Unsupported file type: .'+ext);
+  if(loadId!==loadSequence)return;
+  html=loadedHtml;
   if(ctl)html=addCtl(html);$('ctl').disabled=!ctl;
-  msg('Ready: '+file.name+(portable?'':' (Unity builds run here but can\u2019t be exported as a single file; host the original folder instead)'));
+  msg('Ready: '+file.name+(portable?'':' (This build can\u2019t be exported as a single file; host the original folder instead)'));
   show(open);
- }catch(e){msg(e.message)}
+ }catch(e){if(loadId===loadSequence)msg(e.message)}
 }
 $('drop').onclick=e=>{if(e.target!==$('f'))$('f').click()};
 $('f').onchange=e=>{const file=e.target.files[0];e.target.value='';load(file)};
