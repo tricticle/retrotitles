@@ -2,18 +2,113 @@
 <html lang="en"><head><meta charset="utf-8"><title>retrotitles</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="stylesheet" href="launcher.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script>
+(()=> {
+ const entries=window.__retrotitlesLogs=[];
+ const limit=250;
+ const format=value=>{
+  if(value instanceof Error)return value.stack||value.message||String(value);
+  if(typeof value==='string')return value;
+  try{const text=JSON.stringify(value);return text===undefined?String(value):text}catch(e){return String(value)}
+ };
+ const log=(level,message,source='page')=>{
+  entries.push({time:new Date().toISOString(),level,message:String(message||'').slice(0,2000),source});
+  if(entries.length>limit)entries.splice(0,entries.length-limit);
+  if(window.__retrotitlesRender)window.__retrotitlesRender();
+ };
+ window.__retrotitlesLog=log;
+ window.addEventListener('error',event=>{
+  if(event.target&&event.target!==window){
+   const target=event.target;
+   let url=target.currentSrc||target.src||target.href||'';
+   if(url)url=String(url).split('?')[0].split('#')[0];
+   log('error',url?'Resource failed to load: '+url:'A page resource failed to load ('+String(target.tagName||'resource').toLowerCase()+')','resource');
+   return;
+  }
+  const location=[event.filename,event.lineno?':'+event.lineno:'',event.colno?':'+event.colno:''].join('');
+  log('error',(event.message||'Uncaught page error')+(location?' — '+location:''),'page');
+ },true);
+ window.addEventListener('unhandledrejection',event=>log('error','Unhandled promise rejection: '+format(event.reason),'promise'));
+ const originalError=console.error;
+ console.error=function(){const args=Array.prototype.slice.call(arguments);log('error',args.map(format).join(' '),'console');return originalError.apply(console,args)};
+ const originalWarn=console.warn;
+ console.warn=function(){const args=Array.prototype.slice.call(arguments);log('warn',args.map(format).join(' '),'console');return originalWarn.apply(console,args)};
+ window.addEventListener('message',event=>{
+  const frame=document.getElementById('fr');
+  if(!frame||event.source!==frame.contentWindow||!event.data||event.data.type!=='rt-console')return;
+  log(event.data.level==='warn'?'warn':'error',String(event.data.message||'Player reported an issue'),'player');
+ });
+ document.addEventListener('DOMContentLoaded',()=>{
+  const toggle=document.getElementById('console-toggle'),panel=document.getElementById('console-panel');
+  const output=document.getElementById('console-output'),badge=document.getElementById('console-badge');
+  const status=document.getElementById('console-status');
+  if(!toggle||!panel||!output)return;
+  const render=()=>{
+   output.replaceChildren();
+   if(!entries.length){const empty=document.createElement('div');empty.className='lp-console-empty';empty.textContent='No issues logged yet. Loading activity and player errors will appear here.';output.appendChild(empty)}
+   entries.forEach(entry=>{
+    const row=document.createElement('div');
+    row.className='lp-console-row'+(entry.level==='error'?' is-error':entry.level==='warn'?' is-warn':'');
+    row.textContent=entry.time.slice(11,19)+'  '+entry.level.toUpperCase()+'  '+entry.source+'  '+entry.message;
+    output.appendChild(row);
+   });
+   output.scrollTop=output.scrollHeight;
+   const errors=entries.filter(entry=>entry.level==='error').length;
+   const warnings=entries.filter(entry=>entry.level==='warn').length;
+   const issues=errors+warnings;
+   if(badge){badge.textContent=issues>99?'99+':String(issues);badge.hidden=issues===0}
+   toggle.classList.toggle('has-errors',errors>0);
+   toggle.classList.toggle('has-warnings',errors===0&&warnings>0);
+  };
+  window.__retrotitlesRender=render;
+  const close=()=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.focus()};
+  toggle.addEventListener('click',()=>{panel.hidden=!panel.hidden;toggle.setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden)render()});
+  document.getElementById('console-close')?.addEventListener('click',close);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden)close()});
+  document.getElementById('console-copy')?.addEventListener('click',async()=>{
+   const text=entries.length?entries.map(entry=>entry.time+' ['+entry.level.toUpperCase()+'] ['+entry.source+'] '+entry.message).join('\n'):'No browser or player issues have been logged.';
+   try{await navigator.clipboard.writeText(text);if(status)status.textContent='Log copied. Paste it into your support message.'}
+   catch(e){if(status)status.textContent='Clipboard access was blocked. Use Download log instead.'}
+  });
+  document.getElementById('console-download')?.addEventListener('click',()=>{
+   const text=entries.length?entries.map(entry=>entry.time+' ['+entry.level.toUpperCase()+'] ['+entry.source+'] '+entry.message).join('\n'):'No browser or player issues have been logged.';
+   const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));
+   const link=document.createElement('a');link.href=url;link.download='retrotitles-console-log.txt';link.click();
+   setTimeout(()=>URL.revokeObjectURL(url),1000);
+   if(status)status.textContent='Log downloaded.';
+  });
+  document.getElementById('console-clear')?.addEventListener('click',()=>{entries.length=0;if(status)status.textContent='Log cleared.';render()});
+  render();
+ });
+})();
+</script>
 </head><body>
 <div class="lp-page"><div class="lp-frame">
 <header class="lp-topbar">
  <div class="lp-brand" aria-label="retrotitles">
   <span class="lp-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span><span>retrotitles</span>
  </div>
- <div class="lp-top-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="m9 12 2 2 4-5"/></svg>Private by design</div>
+ <div class="lp-top-actions">
+  <button id="console-toggle" class="lp-console-toggle" type="button" aria-controls="console-panel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 8-4 4 4 4"/><path d="m17 8 4 4-4 4"/><path d="m14 5-4 14"/></svg>Console<span id="console-badge" class="lp-console-badge" hidden>0</span></button>
+  <div class="lp-top-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="m9 12 2 2 4-5"/></svg>Private by design</div>
+ </div>
 </header>
+<section id="console-panel" class="lp-console-panel" role="region" aria-labelledby="console-title" hidden>
+ <div class="lp-console-heading">
+  <div><p class="lp-console-eyebrow">DIAGNOSTICS</p><h2 id="console-title">Console</h2><p>Browser and player errors stay on this device until you copy or download them.</p></div>
+  <button id="console-close" class="lp-console-close" type="button" aria-label="Close console">×</button>
+ </div>
+ <div id="console-output" class="lp-console-output" role="log" aria-live="polite"></div>
+ <div class="lp-console-footer">
+  <span id="console-status" class="lp-console-status">Only share this log if you choose to.</span>
+  <div class="lp-console-actions"><button id="console-copy" class="lp-console-action lp-console-copy" type="button">Copy log</button><button id="console-download" class="lp-console-action" type="button">Download log</button><button id="console-clear" class="lp-console-action" type="button">Clear</button></div>
+ </div>
+</section>
 <main class="lp-main">
  <p class="lp-kicker">A player for your own files</p>
  <h1 class="lp-heading">Your titles, <em>right where you left them.</em></h1>
- <p class="lp-intro">Bring a local file, folder, or browser game build. Nothing gets uploaded, and large files are read only when the player asks for them.</p>
+ <p class="lp-intro">Bring a local file, folder, or interactive web build. Nothing gets uploaded, and large files are read only when the player asks for them.</p>
  <div class="lp-layout">
   <section class="lp-launch-card" aria-label="Choose a local title">
    <div id="drop" class="lp-drop" aria-label="Choose a local file or drop it here">
@@ -105,7 +200,17 @@ let runtimePreference=null;
 try{runtimePreference=localStorage.getItem('retrotitles-local-runtimes');if(runtimePreference!==null)$('local-runtime').checked=runtimePreference==='true'}catch(e){}
 $('runtime-note').hidden=!$('local-runtime').checked;
 $('local-runtime').onchange=()=>{$('runtime-note').hidden=!runtimeIsLocal();runtimePreference=String(runtimeIsLocal());try{localStorage.setItem('retrotitles-local-runtimes',runtimePreference)}catch(e){}};
-const msg=(text,busy=false)=>{$('msg').textContent=text;$('msg').setAttribute('aria-busy',String(busy))};
+let busyWarningTimer=null;
+const msg=(text,busy=false,level='info')=>{
+ const output=$('msg');output.textContent=text;output.setAttribute('aria-busy',String(busy));
+ window.__retrotitlesLog?.(level,text,'app');
+ if(busyWarningTimer)clearTimeout(busyWarningTimer);
+ if(busy)busyWarningTimer=setTimeout(()=>{
+  if(output.getAttribute('aria-busy')!=='true')return;
+  const warning='Still processing after 90 seconds. Large files can take time; open Console to inspect errors.';
+  output.textContent=warning;window.__retrotitlesLog?.('warn',warning,'app');
+ },90000);
+};
 const b64=buf=>{const u=new Uint8Array(buf);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
 const esc=s=>s.replace(/<\/script/gi,'<\\/script');
 const HEAD='<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>retrotitles</title>';
@@ -122,13 +227,15 @@ const CORES={
  cso:'psp',prx:'psp',elf:'psp',conf:'dos'
 };
 const runtimeIsLocal=()=>$('local-runtime').checked;
-const LOCAL_RUNTIME_FILES=['runtime/jszip.min.js','runtime/ruffle/ruffle.js','runtime/ruffle/172de42e6619eac8f371.wasm','runtime/ruffle/878d548199cddef07035.wasm','runtime/pyodide/pyodide.js','runtime/pyodide/pyodide.asm.js','runtime/pyodide/pyodide.asm.wasm','runtime/pyodide/python_stdlib.zip','runtime/pyodide/pyodide-lock.json','runtime/emulatorjs/data/loader.js','runtime/emulatorjs/data/emulator.min.js','runtime/emulatorjs/data/emulator.min.css','runtime/emulatorjs/data/src/emulator.js','runtime/emulatorjs/data/cores/cores.json','runtime/emulatorjs/data/cores/fceumm-legacy-wasm.data','runtime/emulatorjs/data/cores/ppsspp-thread-wasm.data','runtime/emulatorjs/data/cores/dosbox_pure-thread-wasm.data'];
+const LOCAL_RUNTIME_FILES=['jszip.min.js','runtime/ruffle/ruffle.js','runtime/ruffle/172de42e6619eac8f371.wasm','runtime/ruffle/878d548199cddef07035.wasm','runtime/pyodide/pyodide.js','runtime/pyodide/pyodide.asm.js','runtime/pyodide/pyodide.asm.wasm','runtime/pyodide/python_stdlib.zip','runtime/pyodide/pyodide-lock.json','runtime/emulatorjs/data/loader.js','runtime/emulatorjs/data/emulator.min.js','runtime/emulatorjs/data/emulator.min.css','runtime/emulatorjs/data/src/emulator.js','runtime/emulatorjs/data/cores/cores.json','runtime/emulatorjs/data/cores/fceumm-legacy-wasm.data','runtime/emulatorjs/data/cores/ppsspp-thread-wasm.data','runtime/emulatorjs/data/cores/dosbox_pure-thread-wasm.data'];
 if(runtimePreference===null&&window.isSecureContext&&typeof fetch==='function'){
- Promise.all(LOCAL_RUNTIME_FILES.map(path=>fetch(path,{method:'HEAD'}))).then(responses=>{
-  if(runtimePreference!==null||responses.some(response=>!response.ok))return;
+ Promise.all(LOCAL_RUNTIME_FILES.map(path=>fetch(path,{method:'HEAD'}).then(response=>({path,ok:response.ok})))).then(responses=>{
+  const missing=responses.filter(response=>!response.ok).map(response=>response.path);
+  if(missing.length)window.__retrotitlesLog?.('warn','Local runtime check found missing files: '+missing.join(', '),'runtime');
+  if(runtimePreference!==null||missing.length)return;
   $('local-runtime').checked=true;$('runtime-note').hidden=false;
   try{localStorage.setItem('retrotitles-local-runtimes','true')}catch(e){}
- }).catch(()=>{});
+ }).catch(error=>window.__retrotitlesLog?.('warn','Local runtime check could not finish: '+(error.message||error),'runtime'));
 }
 
 const wrapJS=js=>HEAD+'<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;margin:0 auto;max-width:100%}</style></head><body><canvas id="canvas" width="800" height="600"></canvas><script>\n'+esc(js)+'\n<\/script></body></html>';
@@ -156,9 +263,11 @@ async function ensureJSZip(){
  if(window.JSZip)return;
  if(!zipScriptPromise)zipScriptPromise=new Promise((resolve,reject)=>{
   const local=runtimeIsLocal(),script=document.createElement('script');
-  script.src=local?'runtime/jszip.min.js':'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-  script.onload=resolve;
-  script.onerror=()=>{zipScriptPromise=null;reject(new Error(local?'Missing local ZIP runtime at runtime/jszip.min.js.':'Could not load JSZip from the CDN.'))};
+  const src=local?'jszip.min.js':'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+  const timer=setTimeout(()=>{zipScriptPromise=null;script.remove();reject(new Error('ZIP support did not load within 20 seconds. Check the Console tab for details.'))},20000);
+  script.src=src;
+  script.onload=()=>{clearTimeout(timer);if(window.JSZip)resolve();else{zipScriptPromise=null;reject(new Error('The ZIP helper loaded but JSZip was not defined.'))}};
+  script.onerror=()=>{clearTimeout(timer);zipScriptPromise=null;reject(new Error(local?'Missing local ZIP runtime at jszip.min.js.':'Could not load JSZip from the CDN.'))};
   document.head.appendChild(script);
  });
  await zipScriptPromise;
@@ -252,11 +361,52 @@ const CTRL_FN=function(){
   var root=document.getElementById('grc');if(root&&root.__grToggle)root.__grToggle();
  });
 };
-const addCtl=h=>{const s='<script>('+CTRL_FN.toString()+')()<\/script>';let i=-1,m;const re=/<\/body>/gi;while((m=re.exec(h)))i=m.index;return i<0?h+s:h.slice(0,i)+s+h.slice(i)};
+const PLAYER_LOG_FN=function(){
+ const format=value=>{
+  if(value instanceof Error)return value.stack||value.message||String(value);
+  if(typeof value==='string')return value;
+  try{const text=JSON.stringify(value);return text===undefined?String(value):text}catch(e){return String(value)}
+ };
+ const report=(level,message)=>{
+  try{window.parent.postMessage({type:'rt-console',level,message:String(message||'').slice(0,2000)},'*')}catch(e){}
+ };
+ window.addEventListener('error',event=>{
+  if(event.target&&event.target!==window){
+   const target=event.target;let url=target.currentSrc||target.src||target.href||'';
+   if(url)url=String(url).split('?')[0].split('#')[0];
+   report('error',url?'Player resource failed: '+url:'Player resource failed to load');
+   return;
+  }
+  const location=[event.filename,event.lineno?':'+event.lineno:'',event.colno?':'+event.colno:''].join('');
+  report('error',(event.message||'Uncaught player error')+(location?' — '+location:''));
+ },true);
+ window.addEventListener('unhandledrejection',event=>report('error','Player promise rejected: '+format(event.reason)));
+ ['error','warn'].forEach(level=>{
+  const original=console[level];
+  console[level]=function(){
+   const args=Array.prototype.slice.call(arguments);
+   report(level,args.map(format).join(' '));
+   return original.apply(console,args);
+  };
+ });
+};
+const addCtl=h=>{
+ const diagnostics='<script>('+PLAYER_LOG_FN.toString()+')()<\/script>';
+ const controls='<script>('+CTRL_FN.toString()+')()<\/script>';
+ let page=h,head=/<head[^>]*>/i.exec(page);
+ if(head)page=page.slice(0,head.index+head[0].length)+diagnostics+page.slice(head.index+head[0].length);
+ else page=diagnostics+page;
+ let i=-1,m;const re=/<\/body>/gi;while((m=re.exec(page)))i=m.index;
+ return i<0?page+controls:page.slice(0,i)+controls+page.slice(i);
+};
 
 
 let streamUrl=null,provider=null,providerId=null,loadSequence=0;
 const canSW=()=>'serviceWorker' in navigator&&window.isSecureContext;
+function withTimeout(promise,milliseconds,message){
+ let timer;
+ return Promise.race([Promise.resolve(promise),new Promise((resolve,reject)=>{timer=setTimeout(()=>reject(new Error(message)),milliseconds)})]).finally(()=>clearTimeout(timer));
+}
 const newProviderId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const STREAM_THRESHOLD=32*1024*1024;
 const sizeLabel=n=>n>=1e9?(n/1e9).toFixed(1)+' GB':n>=1e6?(n/1e6).toFixed(0)+' MB':n>=1e3?Math.round(n/1e3)+' KB':n+' B';
@@ -309,7 +459,7 @@ async function openLibraryEntry(entry){
   const file=await entry.handle.getFile();
   msg('Opening '+entry.name+'…');
   await load(file);
- }catch(error){msg('Could not reopen '+entry.name+': '+error.message)}
+  }catch(error){msg('Could not reopen '+entry.name+': '+error.message,false,'error')}
 }
 async function renderLibrary(){
  if(!canUseLibrary())return;
@@ -321,7 +471,7 @@ async function renderLibrary(){
   const title=document.createElement('span');title.className='lp-library-name';title.textContent=entry.name;
   const actions=document.createElement('span');actions.className='lp-library-actions';
   const open=document.createElement('button');open.type='button';open.className='lp-button';open.textContent='Open';open.onclick=()=>openLibraryEntry(entry);
-  const remove=document.createElement('button');remove.type='button';remove.className='lp-button';remove.textContent='Remove';remove.setAttribute('aria-label','Remove '+entry.name+' from library');remove.onclick=()=>deleteLibraryEntry(entry.id).catch(error=>msg(error.message));
+  const remove=document.createElement('button');remove.type='button';remove.className='lp-button';remove.textContent='Remove';remove.setAttribute('aria-label','Remove '+entry.name+' from library');remove.onclick=()=>deleteLibraryEntry(entry.id).catch(error=>msg(error.message,false,'error'));
   actions.append(open,remove);row.append(title,actions);list.append(row);
  }
 }
@@ -333,17 +483,17 @@ async function addLibraryTitle(){
   await renderLibrary();
   msg('Added '+handle.name+' to your library.');
   await load(file);
- }catch(error){if(error.name!=='AbortError')msg('Could not add title: '+error.message)}
+  }catch(error){if(error.name!=='AbortError')msg('Could not add title: '+error.message,false,'error')}
 }
 if(canUseLibrary()){
  $('library').hidden=false;
  $('library-add').onclick=addLibraryTitle;
- renderLibrary().catch(error=>msg('Could not load title library: '+error.message));
+ renderLibrary().catch(error=>msg('Could not load title library: '+error.message,false,'error'));
 }
 async function streamLocalFile(file,loadId=loadSequence){
  if(!canSW())throw new Error('Streaming large local files needs this page opened over HTTPS or localhost.');
- try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready}
- catch(e){throw new Error('Could not start the local file streaming service. Open this page over HTTPS or localhost.')}
+ try{await navigator.serviceWorker.register('sw.js');await withTimeout(navigator.serviceWorker.ready,20000,'The local streaming service did not become ready within 20 seconds.')}
+ catch(e){throw new Error('Could not start the local file streaming service. Open this page over HTTPS or localhost. '+(e.message||''))}
  if(loadId!==loadSequence)return false;
  providerId=newProviderId();
  provider=async path=>path==='game.bin'?{blob:file,type:file.type||mimeOf(file.name)}:{};
@@ -372,8 +522,8 @@ async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
  for(const e of entries){if(!e.name.startsWith(base))continue;const k=norm(e.name.slice(base.length));map.set(k,e);low.set(k.toLowerCase(),e)}
  const indexRel=norm(idx.slice(base.length));
  const cache=new Map();
- try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready}
- catch(e){throw Object.assign(new Error('Service worker unavailable'),{noSW:true})}
+ try{await navigator.serviceWorker.register('sw.js');await withTimeout(navigator.serviceWorker.ready,20000,'The local streaming service did not become ready within 20 seconds.')}
+ catch(e){throw Object.assign(new Error('Service worker unavailable: '+(e.message||'unknown error')),{noSW:true})}
  if(loadId!==loadSequence)return false;
  providerId=newProviderId();
  provider=async path=>{
@@ -428,7 +578,7 @@ async function loadFolder(files){
   const streamed=await streamFrom(files.map(f=>({name:f.webkitRelativePath||f.name,get:async()=>f})),loadId);
   if(!streamed||loadId!==loadSequence)return;
   msg('Streaming folder ('+files.length+' files). Files are read on demand.');showStream();
- }catch(e){if(loadId===loadSequence)msg(e.message)}
+ }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
 }
 function show(open){
  $('code').value=html.length>1.5e6?'/* Code is large ('+Math.round(html.length/1e6)+' MB, mostly embedded title data). Use Download or Copy. */':html;
@@ -535,7 +685,7 @@ async function load(file){
   if(ctl)html=addCtl(html);$('ctl').disabled=!ctl;
   msg('Ready: '+file.name+(portable?'':' (This build can\u2019t be exported as a single file; host the original folder instead)'));
   show(open);
- }catch(e){if(loadId===loadSequence)msg(e.message)}
+ }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
 }
 $('drop').onclick=e=>{if(e.target!==$('f'))$('f').click()};
 $('f').onchange=e=>{const file=e.target.files[0];e.target.value='';load(file)};
@@ -549,5 +699,5 @@ $('ctl').onclick=()=>{touchControlsOn=!touchControlsOn;$('ctl').setAttribute('ar
 $('fs').onclick=toggleFullscreen;
 $('fs-exit').onclick=exitFullscreen;
 $('dl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=name+'-runnable.html';a.click()};
-$('cp').onclick=async()=>{try{await navigator.clipboard.writeText(html);msg('Copied to clipboard.')}catch(e){msg('Copy blocked by the browser. Use Download instead.')}};
+$('cp').onclick=async()=>{try{await navigator.clipboard.writeText(html);msg('Copied to clipboard.')}catch(e){msg('Copy blocked by the browser. Use Download instead.',false,'warn')}};
 </script></body></html>
