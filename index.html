@@ -164,6 +164,12 @@ async function ensureJSZip(){
  await zipScriptPromise;
 }
 async function fromZip(buf){await ensureJSZip();return build(await JSZip.loadAsync(buf))}
+function zipAssetPath(ref,base=''){
+ if(!ref||/^(data:|https?:|\/\/|#|blob:)/i.test(ref))return null;
+ let path=ref.split(/[?#]/)[0].replace(/\\/g,'/');
+ try{path=decodeURIComponent(path)}catch(e){}
+ return norm(path.startsWith('/')?path.slice(1):base+path);
+}
 async function build(z){const names=Object.keys(z.files).filter(n=>!z.files[n].dir&&!n.startsWith('__MACOSX'));
  const idx=names.filter(n=>/(^|\/)index\.html?$/i.test(n)).sort((a,b)=>a.split('/').length-b.split('/').length)[0];
  if(!idx)throw new Error('No start page was found in the ZIP archive.');
@@ -176,10 +182,13 @@ async function build(z){const names=Object.keys(z.files).filter(n=>!z.files[n].d
   for(const n of files){const rel=n.slice(base.length);const blob=new Blob([await z.files[n].async('arraybuffer')],{type:mimeOf(n)});out=out.split(rel).join(URL.createObjectURL(blob))}
   return out;
  }
- const find=ref=>{if(!ref||/^(data:|https?:|\/\/|#|blob:)/i.test(ref))return null;return z.files[norm(base+decodeURI(ref.split(/[?#]/)[0]))]||null};
+ const exactFiles=new Map(names.map(path=>[norm(path),z.files[path]]));
+ const foldedFiles=new Map(names.map(path=>[norm(path).toLowerCase(),z.files[path]]));
+ const find=ref=>{const path=zipAssetPath(ref,base);return path===null?null:exactFiles.get(path)||foldedFiles.get(path.toLowerCase())||null};
  const doc=new DOMParser().parseFromString(raw,'text/html');
- for(const l of [...doc.querySelectorAll('link[rel~=stylesheet]')]){const f=find(l.getAttribute('href'));if(f){const s=doc.createElement('style');s.textContent=await f.async('string');l.replaceWith(s)}}
- for(const s of [...doc.querySelectorAll('script[src]')]){const f=find(s.getAttribute('src'));if(f){const n=doc.createElement('script');if(s.type)n.type=s.type;n.textContent=esc(await f.async('string'));s.replaceWith(n)}}
+ if(doc.querySelector('script[type="module"],link[rel~="modulepreload"]'))throw new Error('This ZIP uses JavaScript modules and must be streamed. Open this page over HTTPS or localhost and keep Single-file ZIP off.');
+ for(const l of [...doc.querySelectorAll('link[rel~=stylesheet]')]){const href=l.getAttribute('href'),path=zipAssetPath(href,base),f=find(href);if(path&&!f)throw new Error('Missing stylesheet in ZIP: '+href);if(f){const s=doc.createElement('style');s.textContent=await f.async('string');l.replaceWith(s)}}
+ for(const s of [...doc.querySelectorAll('script[src]')]){const src=s.getAttribute('src'),path=zipAssetPath(src,base),f=find(src);if(path&&!f)throw new Error('Missing script in ZIP: '+src);if(f){const n=doc.createElement('script');if(s.type)n.type=s.type;n.textContent=esc(await f.async('string'));s.replaceWith(n)}}
  for(const e of [...doc.querySelectorAll('img[src],audio[src],video[src],source[src]')]){const f=find(e.getAttribute('src'));if(f)e.setAttribute('src','data:'+mimeOf(f.name)+';base64,'+await f.async('base64'))}
  return '<!DOCTYPE html>\n'+doc.documentElement.outerHTML;
 }
@@ -394,6 +403,13 @@ function engineWebExport(entries){
  const hasPayload=names.some(path=>/\.(?:pak|data)(?:\.(?:br|gz))?$/i.test(path));
  return wasm&&hasPayload?{name:'Unreal Engine',index:indexFor(wasm)}:null;
 }
+async function zipRequiresStreaming(entries,index){
+ const entry=entries.find(item=>item.name===index);
+ if(!entry)return false;
+ const page=await entry.get();
+ const doc=new DOMParser().parseFromString(await page.text(),'text/html');
+ return Boolean(doc.querySelector('script[type="module"],link[rel~="modulepreload"]'));
+}
 async function tryStream(file,loadId=loadSequence,entries=null){
  if(!canSW())return false;
  try{return await streamFrom(entries||await zipEntries(file),loadId)}catch(e){if(e.noSW)return false;throw e}
@@ -471,11 +487,15 @@ async function load(file){
    entries=await zipEntries(file);
    if(loadId!==loadSequence)return;
    const engine=engineWebExport(entries);
-   if(engine){
-    if(!canSW())throw new Error(engine.name+' browser builds need streaming. Open this page over HTTPS or localhost.');
-    const streamed=await streamFrom(entries,loadId,engine.index);
+   const streamIndex=engine?.index||findStreamIndex(entries.map(entry=>entry.name));
+   const moduleBuild=await zipRequiresStreaming(entries,streamIndex);
+   if(loadId!==loadSequence)return;
+   if(engine||moduleBuild){
+    const buildName=engine?.name||'JavaScript module';
+    if(!canSW())throw new Error(buildName+' builds need streaming. Open this page over HTTPS or localhost.');
+    const streamed=await streamFrom(entries,loadId,streamIndex);
     if(!streamed||loadId!==loadSequence)return;
-    msg('Streaming '+engine.name+' browser build from '+file.name+'. Keep this page open while playing.');showStream();return;
+    msg('Streaming '+buildName+' build from '+file.name+'. Keep this page open while playing.');showStream();return;
    }
   }
   if(selectedCore&&file.size>=STREAM_THRESHOLD){
