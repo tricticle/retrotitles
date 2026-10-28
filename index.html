@@ -246,8 +246,9 @@ const CTRL_FN=function(){
 const addCtl=h=>{const s='<script>('+CTRL_FN.toString()+')()<\/script>';let i=-1,m;const re=/<\/body>/gi;while((m=re.exec(h)))i=m.index;return i<0?h+s:h.slice(0,i)+s+h.slice(i)};
 
 
-let streamUrl=null,provider=null;
+let streamUrl=null,provider=null,providerId=null;
 const canSW=()=>'serviceWorker' in navigator&&window.isSecureContext;
+const newProviderId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const STREAM_THRESHOLD=32*1024*1024;
 const sizeLabel=n=>n>=1e9?(n/1e9).toFixed(1)+' GB':n>=1e6?(n/1e6).toFixed(0)+' MB':n>=1e3?Math.round(n/1e3)+' KB':n+' B';
 function setLoadedTitle(title,size=''){$('title-name').textContent=title||'Local title';$('title-size').textContent=size}
@@ -334,11 +335,13 @@ async function streamLocalFile(file){
  if(!canSW())throw new Error('Streaming large local files needs this page opened over HTTPS or localhost.');
  try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready}
  catch(e){throw new Error('Could not start the local file streaming service. Open this page over HTTPS or localhost.')}
+ providerId=newProviderId();
  provider=async path=>path==='game.bin'?{blob:file,type:file.type||mimeOf(file.name)}:{};
- streamUrl=new URL('__game/game.bin',location.href).href;
+ streamUrl=new URL('__game/'+providerId+'/game.bin',location.href).href;
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.onmessage=async e=>{
  if(!e.data||typeof e.data.path!=='string'||!e.ports[0])return;
+ if(e.data.streamId!==providerId){e.ports[0].close();return}
  let r={};try{r=(provider&&await provider(e.data.path))||{}}catch(x){}
   e.ports[0].postMessage(r);e.ports[0].close();
 };
@@ -357,6 +360,7 @@ async function streamFrom(entries){
  const cache=new Map();
  try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready}
  catch(e){throw Object.assign(new Error('Service worker unavailable'),{noSW:true})}
+ providerId=newProviderId();
  provider=async path=>{
   path=norm(path)||indexRel;
   const e=map.get(path)||low.get(path.toLowerCase());if(!e)return{};
@@ -367,7 +371,7 @@ async function streamFrom(entries){
   if(path===indexRel){blob=new Blob([addCtl(await blob.text())],{type:'text/html'});type='text/html'}
   return{blob,type,encoding:enc};
  };
- streamUrl=new URL('__game/'+indexRel.split('/').map(encodeURIComponent).join('/'),location.href).href;
+ streamUrl=new URL('__game/'+providerId+'/'+indexRel.split('/').map(encodeURIComponent).join('/'),location.href).href;
 }
 async function tryStream(file){
  if(!canSW())return false;

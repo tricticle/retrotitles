@@ -2,21 +2,40 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
-async function ask(path) {
+async function ask(streamId, path) {
   const cs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  const host = cs.find(c => !c.url.includes('/__game/') && !c.url.startsWith('about:'));
-  if (!host) throw new Error('Runner page is closed');
+  const hosts = cs.filter(c => !c.url.includes('/__game/') && !c.url.startsWith('about:'));
+  if (!hosts.length) throw new Error('Runner page is closed');
   return new Promise((resolve, reject) => {
-    const mc = new MessageChannel();
-    const t = setTimeout(() => reject(new Error('timeout')), 180000);
-    mc.port1.onmessage = m => { clearTimeout(t); resolve(m.data); };
-    host.postMessage({ path }, [mc.port2]);
+    let settled = false;
+    const ports = [];
+    const t = setTimeout(() => finish(reject, new Error('timeout')), 180000);
+    function finish(callback, value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      ports.forEach(port => port.close());
+      callback(value);
+    }
+    let sent = 0;
+    for (const host of hosts) {
+      const mc = new MessageChannel();
+      ports.push(mc.port1);
+      mc.port1.onmessage = m => finish(resolve, m.data);
+      try {
+        host.postMessage({ streamId, path }, [mc.port2]);
+        sent++;
+      } catch (err) {
+        mc.port1.close();
+      }
+    }
+    if (!sent) finish(reject, new Error('Could not reach runner page'));
   });
 }
 
-async function handle(req, path) {
+async function handle(req, streamId, path) {
   try {
-    const r = await ask(path);
+    const r = await ask(streamId, path);
     if (!r || !r.blob) return new Response('Not found: ' + path, { status: 404 });
     const h = new Headers({ 'Content-Type': r.type || 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' });
     if (r.encoding) { h.set('Content-Encoding', r.encoding); return new Response(r.blob, { status: 200, headers: h }); }
@@ -57,5 +76,7 @@ self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   const i = u.pathname.indexOf('/__game/');
   if (i < 0) return;
-  e.respondWith(handle(e.request, decodeURIComponent(u.pathname.slice(i + 8))));
+  const parts = u.pathname.slice(i + 8).split('/');
+  const streamId = parts.shift();
+  e.respondWith(handle(e.request, streamId, decodeURIComponent(parts.join('/'))));
 });
