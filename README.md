@@ -13,7 +13,7 @@ retrotitles is a browser-based launcher for running personal game files and smal
 - Stream large ROMs and multi-file ZIP/folder titles on demand, subject to browser and service-worker support.
 - Add configurable touch controls, restart, use fullscreen, and export supported titles as a standalone HTML file.
 - Save local file handles to a title library and reopen them after granting browser permission.
-- Use browser gamepads and the embedded emulator menu for controller mapping and save states where supported by that core.
+- Use browser gamepads and the embedded emulator menu for controller mapping and save states where supported by that core. Export a `.state` file to the device with **Download**, import it later with **Load State**, or store save states in browser storage with **Keep in Browser**.
 - Use the full locally hosted emulator runtimes for offline playback; this workspace has the EmulatorJS 4.2.3, Ruffle 0.7.1, Pyodide 0.26.4, and JSZip 3.10.1 assets installed under the ignored `runtime/` directory.
 - Keep title files local to the browser. Emulator runtimes and some player dependencies are loaded from third-party CDNs, so internet access may be required.
 
