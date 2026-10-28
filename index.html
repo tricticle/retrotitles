@@ -510,8 +510,26 @@ async function zipEntries(file){
  const zr=new window.__zip.ZipReader(new window.__zip.BlobReader(file));
  return (await zr.getEntries()).filter(e=>!e.directory).map(e=>({name:e.filename,get:()=>e.getData(new window.__zip.BlobWriter())}));
 }
+ function findRpgMakerIndex(names){
+  const clean=names.map(name=>norm(name).replace(/\\/g,'/'));
+  const indexes=clean.filter(name=>/(^|\/)index\.html?$/i.test(name)).sort((a,b)=>a.split('/').length-b.split('/').length);
+  for(const index of indexes){
+   const slash=index.lastIndexOf('/'),base=slash<0?'':index.slice(0,slash+1),baseLower=base.toLowerCase();
+   const files=new Set(clean.filter(name=>name.toLowerCase().startsWith(baseLower)).map(name=>name.slice(base.length).toLowerCase()));
+   const hasSystem=files.has('data/system.json');
+   const hasCore=files.has('js/rpg_core.js')||files.has('js/rmmz_core.js')||files.has('js/rpg_core.min.js')||files.has('js/rmmz_core.min.js');
+   if(hasSystem&&hasCore)return index;
+  }
+  return '';
+ }
+ function isDesktopRpgMaker(names){
+  return names.some(name=>{
+   const path=norm(name).replace(/\\/g,'/');
+   return /(^|\/)(game\.ini|game\.rgssad|game\.rgss3a)$/i.test(path)||/\.(rgssad|rgss3a)$/i.test(path);
+  });
+ }
 function findStreamIndex(names){
- return names.filter(n=>/(^|\/)index\.html?$/i.test(n)).sort((a,b)=>a.split('/').length-b.split('/').length)[0]||'';
+  return findRpgMakerIndex(names)||names.filter(n=>/(^|\/)index\.html?$/i.test(n)).sort((a,b)=>a.split('/').length-b.split('/').length)[0]||'';
 }
 async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
  const names=entries.map(e=>e.name).filter(n=>!n.startsWith('__MACOSX'));
@@ -575,7 +593,10 @@ async function loadFolder(files){
  if(!files.length)return;const loadId=++loadSequence,folderName=(files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';streamUrl=null;name=folderName;$('stage').style.display='none';resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Reading folder…',true);
  try{
   if(!canSW())throw new Error('Folder mode needs this page to be opened over https or localhost (not a file:// page).');
-  const streamed=await streamFrom(files.map(f=>({name:f.webkitRelativePath||f.name,get:async()=>f})),loadId);
+   const entries=files.map(f=>({name:f.webkitRelativePath||f.name,get:async()=>f}));
+   const names=entries.map(entry=>entry.name);
+   if(!findStreamIndex(names)&&isDesktopRpgMaker(names))throw new Error('This is a desktop RPG Maker folder. Load an MV/MZ browser export containing index.html, data/System.json, and its js core files instead.');
+   const streamed=await streamFrom(entries,loadId);
   if(!streamed||loadId!==loadSequence)return;
   msg('Streaming folder ('+files.length+' files). Files are read on demand.');showStream();
  }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
@@ -633,9 +654,22 @@ async function load(file){
  $('stage').style.display='none';resetTouchControls();name=titleName;setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Processing '+file.name+'…',true);
  try{
   let open=false,ctl=true,entries=null,loadedHtml='';
-  if(archiveZip){
-   entries=await zipEntries(file);
+   if(ext==='zip'){
+    entries=await zipEntries(file);
    if(loadId!==loadSequence)return;
+    const rpgIndex=findRpgMakerIndex(entries.map(entry=>entry.name));
+    if(rpgIndex){
+     if(!canSW())throw new Error('RPG Maker MV/MZ browser projects need folder streaming. Open this page over HTTPS or localhost and load the project folder or ZIP.');
+     const streamed=await streamFrom(entries,loadId,rpgIndex);
+     if(!streamed||loadId!==loadSequence)return;
+     msg('Streaming RPG Maker title from '+file.name+'. Keep this tab open while it loads project files.');
+     showStream();return;
+    }
+    if(!findStreamIndex(entries.map(entry=>entry.name))&&isDesktopRpgMaker(entries.map(entry=>entry.name)))throw new Error('This ZIP contains a desktop RPG Maker build. Load an MV/MZ browser export containing index.html, data/System.json, and its js core files instead.');
+   }
+   if(archiveZip){
+    if(!entries)entries=await zipEntries(file);
+    if(loadId!==loadSequence)return;
    const engine=engineWebExport(entries);
    const streamIndex=engine?.index||findStreamIndex(entries.map(entry=>entry.name));
    const moduleBuild=await zipRequiresStreaming(entries,streamIndex);
@@ -678,6 +712,8 @@ async function load(file){
   else if(ext==='html'||ext==='htm')loadedHtml=await file.text();
   else if(ext==='swf')loadedHtml=swfPage(b64(await file.arrayBuffer()));
   else if(ext==='py'){loadedHtml=pyPage(await file.text());open=true;}
+   else if(['rpgmvp','rpgmvo','rpgmvm','rpgm'].includes(ext))throw new Error('This is a single RPG Maker asset, not a complete project. Open the exported MV/MZ folder or ZIP containing index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js.');
+   else if(['exe','rgss3a','rgssad'].includes(ext))throw new Error('This is a desktop RPG Maker package. Desktop .exe and RGSS builds cannot run in this browser launcher; use an RPG Maker MV/MZ browser export folder or ZIP instead.');
   else if(selectedCore){loadedHtml=romPage(b64(await file.arrayBuffer()),selectedCore,titleName);open=true;}
   else throw new Error('Unsupported file type: .'+ext);
   if(loadId!==loadSequence)return;

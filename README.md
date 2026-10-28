@@ -2,12 +2,12 @@
 
 Your titles, right where you left them.
 
-retrotitles is a browser-based launcher for running personal game files and small web titles. Files are selected in the browser and are not uploaded by the launcher. Large files and multi-file titles can be streamed locally through a service worker when the page is served from HTTPS or localhost.
+retrotitles is a browser-based launcher for running personal title files and small web titles. Files are selected in the browser and are not uploaded by the launcher. Large files and multi-file titles can be streamed locally through a service worker when the page is served from HTTPS or localhost.
 
 ## Features
 
 - Open a single file, a folder, or a ZIP/RAR archive; drag and drop a single title file.
-- Run HTML/HTM, JavaScript canvas, and Python titles, plus SWF files through Ruffle. Stream Unity WebGL and Unreal Engine browser builds from a folder or ZIP; native desktop/console builds are not supported.
+- Run HTML/HTM, JavaScript canvas, and Python titles, plus SWF files through Ruffle. Stream RPG Maker MV/MZ browser exports from their project folder or ZIP. Stream Unity WebGL and Unreal Engine browser builds from a folder or ZIP; native desktop/console builds are not supported.
 - Run systems in the EmulatorJS 4.2.3 bundle: NES, SNES, Game Boy, GBA, N64, DS, Sega consoles, Atari 2600/5200/7800, PlayStation, PSP, Saturn, 3DO, Jaguar, PC Engine, WonderSwan, Neo Geo Pocket, ColecoVision, Amiga, Commodore, DOS, ZX Spectrum/ZX81, Amstrad CPC, CD-i, and arcade/MAME cores.
 - Select a system manually for ambiguous formats such as `.bin`, `.cue`, `.iso`, `.chd`, and arcade `.zip` files; automatic extension detection is best-effort.
 - Stream large ROMs and multi-file ZIP/folder titles on demand, subject to browser and service-worker support. Unity and Unreal browser builds use streaming so their separate and compressed assets can load correctly.
