@@ -30,6 +30,10 @@ retrotitles is a browser-based launcher for running personal game files and smal
 
 Serve this directory from `localhost` to enable folder and large-file streaming. Opening `index.html` directly still allows supported single-file titles, but service-worker-backed features require a secure context.
 
+## Deploy to Cloudflare Workers
+
+Use the repository root as the static assets directory. The root `.assetsignore` excludes Git metadata and Wrangler's local state while keeping `runtime/` available to the deployed site. Cloudflare limits each uploaded static asset to 25 MiB.
+
 ## Offline Runtime Assets
 
 The **Local runtimes** option loads these assets from `runtime/`. Runtime assets are ignored by Git and are not part of a source checkout. Obtain them from official upstream releases and follow their licenses.
