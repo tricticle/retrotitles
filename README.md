@@ -11,9 +11,11 @@ retrotitles is a browser-based launcher for running personal title files and sma
 - Run systems in the EmulatorJS 4.2.3 bundle: NES, SNES, Game Boy, GBA, N64, DS, Sega consoles, Atari 2600/5200/7800, PlayStation, PSP, Saturn, 3DO, Jaguar, PC Engine, WonderSwan, Neo Geo Pocket, ColecoVision, Amiga, Commodore, DOS, ZX Spectrum/ZX81, Amstrad CPC, CD-i, and arcade/MAME cores.
 - Select a system manually for ambiguous formats such as `.bin`, `.cue`, `.iso`, `.chd`, and arcade `.zip` files; automatic extension detection is best-effort.
 - Stream large ROMs and multi-file ZIP/folder titles on demand, subject to browser and service-worker support. Unity and Unreal browser builds use streaming so their separate and compressed assets can load correctly.
+- Check RPG Maker MV/MZ browser exports for their required start page, system data, and core script before streaming. File reads and ZIP embedding show progress and can be canceled; large titles may still exceed browser memory.
 - Add configurable touch controls, restart, use fullscreen, and export supported titles as a standalone HTML file.
 - Save local file handles to a title library and reopen them after granting browser permission.
-- Use browser gamepads and the embedded emulator menu for controller mapping and save states where supported by that core. Export a `.state` file to the device with **Download**, import it later with **Load State**, or store save states in browser storage with **Keep in Browser**.
+- Use browser gamepads and the embedded emulator menu for controller mapping and save states where supported by that core. The launcher lists browser-stored EmulatorJS states and can save, load, import, download, or remove them. Browser storage can be cleared; download important saves as backups.
+- Keep the page structure and styles in `index.html` and `launcher.css`. Launcher behavior is split across `launcher.js`, `compatibility.js`, and `save-manager.js`; bundled runtime/vendor code remains separate.
 - Use the full locally hosted emulator runtimes for offline playback; this workspace has the EmulatorJS 4.2.3, Ruffle 0.7.1, Pyodide 0.26.4, and JSZip 3.10.1 assets installed under the ignored `runtime/` directory.
 - Keep title files local to the browser. Emulator runtimes and some player dependencies are loaded from third-party CDNs, so internet access may be required.
 

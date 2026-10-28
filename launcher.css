@@ -428,7 +428,17 @@ html, body { margin: 0; min-height: 100%; }
           color: #64766b;
           font-size: 12px;
         }
-        .lp-message:empty { visibility: hidden; }
+        .lp-message:not(.is-visible) { visibility: hidden; }
+        .lp-message { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .lp-message[aria-busy="false"] #msg-text:empty { display: none; }
+        .lp-load-progress { flex: 1 1 140px; width: min(260px, 100%); height: 8px; accent-color: #63883f; }
+        .lp-load-progress[hidden], .lp-load-cancel[hidden] { display: none; }
+        .lp-load-cancel {
+          min-height: 28px; padding: 0 10px; border: 1px solid var(--lp-line);
+          border-radius: 999px; background: var(--lp-card); color: var(--lp-ink);
+          font-size: 11px; font-weight: 700; cursor: pointer;
+        }
+        .lp-load-cancel:hover { border-color: var(--lp-ink-soft); }
         .lp-message[aria-busy="true"]::before {
           display: inline-block;
           width: 11px;
@@ -456,6 +466,24 @@ html, body { margin: 0; min-height: 100%; }
         .lp-library-name { min-width: 0; overflow: hidden; color: #34574f; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
         .lp-library-actions { display: flex; flex: 0 0 auto; gap: 7px; }
         .lp-library-actions .lp-button { min-height: 32px; }
+        .lp-save-manager { margin-top: 20px; padding: 16px 3px 0; border-top: 1px solid rgba(22, 60, 54, .12); }
+        .lp-save-manager[hidden] { display: none; }
+        .lp-save-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .lp-save-heading h3 { margin: 0; font-size: 15px; }
+        .lp-save-heading p { margin: 3px 0 0; color: var(--lp-muted); font-size: 11px; }
+        .lp-save-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+        .lp-save-actions .lp-button { min-height: 32px; }
+        .lp-save-warning { margin: 12px 0 0; color: #815b2f; font-size: 11px; }
+        .lp-save-storage-status { margin: 5px 0 0; color: var(--lp-muted); font-size: 10px; }
+        .lp-save-storage-status.is-low-space { color: #a54f39; font-weight: 700; }
+        .lp-save-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .lp-save-name { min-width: 0; overflow-wrap: anywhere; color: #34574f; font-size: 12px; font-weight: 650; }
+        .lp-save-size { display: block; color: var(--lp-muted); font-size: 10px; font-weight: 400; }
+        @media (max-width: 480px) {
+          .lp-save-heading { align-items: flex-start; flex-direction: column; }
+          .lp-save-actions { flex-wrap: wrap; }
+          .lp-save-row { align-items: flex-start; flex-direction: column; padding: 10px 0; }
+        }
         .lp-loaded {
           margin-top: 42px;
           padding: 14px;
