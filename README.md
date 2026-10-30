@@ -30,7 +30,7 @@ retrotitles is a browser-based launcher for running personal title files and sma
 
 ## Run Locally
 
-Serve this directory from `localhost` to enable folder and large-file streaming. Opening `index.html` directly still allows supported single-file titles, but service-worker-backed features require a secure context.
+Serve this directory from `localhost` to enable folder and large-file streaming. The PSP core also requires cross-origin isolation; use a server that applies the headers in `_headers` (such as Wrangler), or configure equivalent COOP/COEP headers on your server. Opening `index.html` directly does not provide these headers.
 
 ## Deploy to Cloudflare Workers
 
