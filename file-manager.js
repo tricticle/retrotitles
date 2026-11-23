@@ -5,6 +5,8 @@
   const manager=$('file-manager'),list=$('file-list'),empty=$('file-empty'),status=$('file-manager-status');
   const supported=Boolean(window.indexedDB);
   let dbPromise,ready,writeQueue=Promise.resolve();
+  const selectedFileIds=new Set(),libraryFilters={system:'',source:''};
+  let libraryView='grid';
   const normalizePath=path=>{
    const parts=[];
    String(path||'').replace(/\\/g,'/').replace(/^\/+/,'').split('/').forEach(part=>{
@@ -257,7 +259,77 @@
     file=await record.handleRef.getFile();
    }
    if(!file)throw new Error('The local data for '+record.name+' is no longer available.');
-   return openFile(new File([file],record.name,{type:record.type,lastModified:record.addedAt}));
+   return openFile(new File([file],record.name,{type:record.type,lastModified:record.addedAt}),record);
+  }
+  function renderLibrary(records){
+   const search=$('library-search').value.trim().toLocaleLowerCase();
+   const current=records.filter(record=>!record.superseded);
+   const systems=[...new Set(current.filter(record=>record.system).map(record=>record.system))].sort();
+   const sources=[...new Set(current.map(record=>record.source))].sort();
+   if(!systems.includes(libraryFilters.system))libraryFilters.system='';
+   if(!sources.includes(libraryFilters.source))libraryFilters.source='';
+   const renderChips=(container,values,selected,onSelect)=>{
+    const buttons=[['All',''],...values.map(value=>[value,value])].map(([label,value])=>{
+     const button=document.createElement('button');button.type='button';button.className='lp-filter-chip';button.textContent=label;
+     button.setAttribute('aria-pressed',String(selected===value));
+     button.addEventListener('click',()=>onSelect(value));return button;
+    });
+    container.replaceChildren(...buttons);
+   };
+   renderChips($('library-system-filters'),systems,libraryFilters.system,value=>{libraryFilters.system=value;refresh().catch(error=>msg('Could not refresh the library: '+error.message,false,'error'))});
+   renderChips($('library-source-filters'),sources,libraryFilters.source,value=>{libraryFilters.source=value;refresh().catch(error=>msg('Could not refresh the library: '+error.message,false,'error'))});
+   const files=current.filter(record=>
+    (!libraryFilters.system||record.system===libraryFilters.system)&&
+    (!libraryFilters.source||record.source===libraryFilters.source)&&
+    (!search||(record.path+' '+record.name+' '+record.source).toLocaleLowerCase().includes(search))
+   ).sort((a,b)=>a.path.localeCompare(b.path)||a.addedAt-b.addedAt);
+   const target=$('library-list');target.dataset.view=libraryView;target.replaceChildren();
+   $('library-empty').hidden=current.length>0&&files.length>0;
+   $('library-empty').textContent=current.length&&!files.length?'No games match these filters.':'No games added yet. Use the + button or drag files in.';
+   for(const record of files){
+    const row=document.createElement('li');row.className='lp-game-card';
+    row.addEventListener('contextmenu',event=>{event.preventDefault();window.__retrotitlesOpenControls?.(record)});
+    const details=document.createElement('div');details.className='lp-game-card-main';
+    const title=document.createElement('span');title.className='lp-game-card-title';title.textContent=record.name;title.title=record.path;
+    const meta=document.createElement('span');meta.className='lp-game-card-meta';
+    meta.textContent=record.path+(record.system?' · '+record.system:'')+' · '+sizeLabel(record.size);
+    const source=document.createElement('span');source.className='lp-source-badge';source.textContent=record.source.replace(/[-_]/g,' ');
+    details.append(title,meta,source);
+    const actions=document.createElement('div');actions.className='lp-game-card-actions';
+    actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
+    actions.append(makeButton('Controls','Configure controls for '+record.name,()=>window.__retrotitlesOpenControls?.(record)));
+    row.append(details,actions);target.append(row);
+   }
+   document.querySelectorAll('[data-library-view]').forEach(button=>{
+    button.setAttribute('aria-pressed',String(button.dataset.libraryView===libraryView));
+   });
+  }
+  function fileRow(record,parentNames){
+   const row=document.createElement('li');row.className='lp-library-row lp-file-row';
+   const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='lp-file-selection';
+   checkbox.checked=selectedFileIds.has(record.id);checkbox.setAttribute('aria-label','Select '+record.path);
+   checkbox.addEventListener('change',()=>{
+    if(checkbox.checked)selectedFileIds.add(record.id);else selectedFileIds.delete(record.id);
+    $('file-delete-selected').disabled=selectedFileIds.size===0;
+   });
+   const details=document.createElement('span');details.className='lp-file-name';details.append(document.createTextNode(record.path));
+   const metadata=document.createElement('span');metadata.className='lp-save-size';metadata.textContent=sizeLabel(record.size);
+   details.append(metadata);
+   const source=document.createElement('span');source.className='lp-source-badge';source.textContent=record.source.replace(/[-_]/g,' ');
+   const actions=document.createElement('span');actions.className='lp-library-actions';
+   actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
+   if(record.blob){
+    actions.append(makeButton('Download','Download '+record.name,()=>{
+     const url=URL.createObjectURL(record.blob),link=document.createElement('a');link.href=url;link.download=record.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }));
+   }
+   actions.append(makeButton('Remove','Remove '+record.name,()=>removeFile(record.id).catch(error=>msg('Could not remove file: '+error.message,false,'error'))));
+   row.append(checkbox,details,source,actions);
+   if(record.parentArchiveId){
+    const archive=document.createElement('span');archive.className='lp-source-badge';archive.textContent='from '+(parentNames.get(record.parentArchiveId)||'archive');
+    row.insertBefore(archive,actions);
+   }
+   return row;
   }
   function visibleRecords(records){
    const search=$('file-search').value.trim().toLocaleLowerCase(),system=$('file-system-filter').value,type=$('file-type-filter').value,source=$('file-source-filter').value;
@@ -270,6 +342,7 @@
   }
   async function refresh(){
    const records=await getAllRecords(),files=visibleRecords(records);
+   renderLibrary(records);
    list.replaceChildren();empty.hidden=files.length>0;
    const systems=[...new Set(records.filter(record=>!record.superseded&&record.system).map(record=>record.system))].sort();
    const types=[...new Set(records.filter(record=>!record.superseded).map(record=>extOf(record.name)))].sort();
@@ -280,25 +353,36 @@
     select.replaceChildren(...options);
     if(values.includes(selected))select.value=selected;
    }
-   const parentNames=new Map(records.map(record=>[record.id,record.name]));
-   for(const record of files){
-    const row=document.createElement('li');row.className='lp-library-row lp-file-row';
-    const details=document.createElement('span');details.className='lp-file-name';
-    details.append(document.createTextNode(record.path));
-    const metadata=document.createElement('span');metadata.className='lp-save-size';
-    metadata.textContent=sizeLabel(record.size)+' · '+record.source+(record.parentArchiveId?' · from '+(parentNames.get(record.parentArchiveId)||'archive'):'');
-    details.append(metadata);
-    const actions=document.createElement('span');actions.className='lp-library-actions';
-    actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
-    if(record.blob){
-     actions.append(makeButton('Download','Download '+record.name,()=>{
-      const url=URL.createObjectURL(record.blob),link=document.createElement('a');link.href=url;link.download=record.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-     }));
+   const currentIds=new Set(records.filter(record=>!record.superseded).map(record=>record.id));
+   selectedFileIds.forEach(id=>{if(!currentIds.has(id))selectedFileIds.delete(id)});
+   $('file-delete-selected').disabled=selectedFileIds.size===0;
+   const parentNames=new Map(records.map(record=>[record.id,record.name])),groups=new Map(),topLevel=[];
+   files.forEach(record=>{
+    const directory=record.path.includes('/')?record.path.slice(0,record.path.lastIndexOf('/')):'';
+    const row=fileRow(record,parentNames);
+    if(!directory){topLevel.push(row);return}
+    let group=groups.get(directory);
+    if(!group){
+     const item=document.createElement('li'),details=document.createElement('details');details.className='lp-path-group';details.open=true;
+     const summary=document.createElement('summary');summary.textContent=directory;
+     const children=document.createElement('ul');details.append(summary,children);item.append(details);group={item,children,count:0};groups.set(directory,group);
     }
-    actions.append(makeButton('Remove','Remove '+record.name,()=>removeFile(record.id).catch(error=>msg('Could not remove file: '+error.message,false,'error'))));
-    row.append(details,actions);list.append(row);
+    group.children.append(row);group.count++;
+   });
+   for(const group of groups.values()){
+    group.item.querySelector('summary').append(document.createTextNode(' · '+group.count+' file'+(group.count===1?'':'s')));
+    topLevel.push(group.item);
    }
+   list.append(...topLevel);
    status.textContent=files.length+' file'+(files.length===1?'':'s')+' stored locally in this browser; nothing is uploaded.';
+  }
+  async function deleteSelectedFiles(){
+   const ids=Array.from(selectedFileIds);
+   if(!ids.length)return;
+   if(!window.confirm('Delete '+ids.length+' selected file'+(ids.length===1?'':'s')+' from this browser? This cannot be undone.'))return;
+   const db=await openDb(),transaction=db.transaction(STORE,'readwrite'),store=transaction.objectStore(STORE);
+   ids.forEach(id=>store.delete(id));await transactionDone(transaction);
+   selectedFileIds.clear();window.dispatchEvent(new CustomEvent('library-updated'));
   }
   async function rebuildIndex(){
    const records=await getAllRecords(),db=await openDb(),updates=[];
@@ -339,7 +423,7 @@
   manager.hidden=false;
   if(!supported){
    status.textContent='This browser does not support local file storage.';
-   $('file-import-button').disabled=true;$('file-refresh').disabled=true;$('file-rebuild').disabled=true;
+   $('file-import-button').disabled=true;$('library-add-files').disabled=true;$('file-refresh').disabled=true;$('file-rebuild').disabled=true;$('file-delete-selected').disabled=true;
    $('runtime-cache-clear').onclick=()=>clearRuntimeCache().catch(error=>msg('Could not clear runtime cache: '+error.message,false,'error'));
    return;
   }
@@ -347,6 +431,12 @@
   ['file-search','file-system-filter','file-type-filter','file-source-filter'].forEach(id=>{
    $(id).addEventListener('input',refreshOnChange);$(id).addEventListener('change',refreshOnChange);
   });
+  $('library-search').addEventListener('input',refreshOnChange);
+  $('library-add-files').onclick=()=>$('file-import-button').click();
+  $('file-delete-selected').onclick=()=>deleteSelectedFiles().catch(error=>msg('Could not delete selected files: '+error.message,false,'error'));
+  document.querySelectorAll('[data-library-view]').forEach(button=>button.addEventListener('click',()=>{
+   libraryView=button.dataset.libraryView;refreshOnChange();
+  }));
   $('file-import-button').onclick=()=>$('file-import').click();
   $('file-refresh').onclick=refreshOnChange;
   $('file-rebuild').onclick=()=>rebuildIndex().catch(error=>msg('Could not rebuild the file index: '+error.message,false,'error'));

@@ -1,6 +1,31 @@
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
 const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts}=window.__retrotitlesCompatibility;
 const EMULATORJS_VERSION='4.2.3';
+const tabIds=['library','files','play','controls'];
+function activateTab(id,focus=false){
+ if(!tabIds.includes(id))return;
+ tabIds.forEach(tabId=>{
+  const tab=$('tab-'+tabId),panel=$('panel-'+tabId),selected=tabId===id;
+  tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;panel.hidden=!selected;
+ });
+ if(focus)$('tab-'+id).focus();
+}
+const tabbar=document.querySelector('.lp-tabbar');
+tabbar.addEventListener('click',event=>{const tab=event.target.closest('[role="tab"]');if(tab)activateTab(tab.id.slice(4))});
+tabbar.addEventListener('keydown',event=>{
+ const current=tabIds.indexOf(document.activeElement.id.slice(4));
+ let next=current;
+ if(event.key==='ArrowRight')next=(current+1)%tabIds.length;
+ else if(event.key==='ArrowLeft')next=(current+tabIds.length-1)%tabIds.length;
+ else if(event.key==='Home')next=0;
+ else if(event.key==='End')next=tabIds.length-1;
+ else return;
+ event.preventDefault();activateTab(tabIds[next],true);
+});
+const settingsDialog=$('settings-dialog');
+$('settings-open').addEventListener('click',()=>settingsDialog.showModal());
+$('settings-controls-link').addEventListener('click',()=>{settingsDialog.close();activateTab('controls')});
+$('settings-files-link').addEventListener('click',()=>{settingsDialog.close();activateTab('files')});
 let runtimePreference=null;
 try{runtimePreference=localStorage.getItem('retrotitles-local-runtimes');if(runtimePreference!==null)$('local-runtime').checked=runtimePreference==='true'}catch(e){}
 $('runtime-note').hidden=!$('local-runtime').checked;
@@ -71,12 +96,102 @@ const wrapJS=js=>HEAD+'<style>html,body{margin:0;height:100%;background:#000;ove
 
 const swfPage=(source,streamed=false)=>{const local=runtimeIsLocal(),runtime=local?'runtime/ruffle/ruffle.js':'https://unpkg.com/@ruffle-rs/ruffle',failure=local?'Missing local Ruffle runtime at '+runtime:'Could not load Ruffle from the CDN.';return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#c{width:100%;height:100%}</style><script src="'+runtime+'" crossorigin="anonymous" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.body.textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><div id="c"></div><script>\naddEventListener("load",()=>{const p=RufflePlayer.newest().createPlayer();p.style.cssText="width:100%;height:100%";document.getElementById("c").appendChild(p);p.ruffle().load('+ (streamed?'{url:'+JSON.stringify(source)+'}':'{data:Uint8Array.from(atob('+JSON.stringify(source)+'),c=>c.charCodeAt(0))}') +')});\n<\/script></body></html>'};
 
-const availableShaders=['disabled','bicubic','sabr','2xScaleHQ.glslp','4xScaleHQ.glslp'];
-let emulatorShader='disabled';
-try{const savedShader=localStorage.getItem('retrotitles-emulator-shader');if(availableShaders.includes(savedShader))emulatorShader=savedShader}catch(e){}
-$('emulator-shader').value=emulatorShader;
-$('emulator-shader').onchange=()=>{emulatorShader=$('emulator-shader').value;try{localStorage.setItem('retrotitles-emulator-shader',emulatorShader)}catch(e){}};
+const fallbackShaders=['2xScaleHQ.glslp','4xScaleHQ.glslp','sabr','crt-aperture.glslp','crt-easymode.glslp','crt-geom.glslp','crt-mattias.glslp','crt-beam','crt-caligari','crt-lottes','crt-zfast','crt-yeetron','bicubic','mix-frames'];
+let availableShaders=fallbackShaders.slice(),emulatorShader='disabled';
+const readStoredValue=(key,fallback)=>{
+ try{const value=localStorage.getItem(key);return value===null?fallback:value}
+ catch(error){window.__retrotitlesLog?.('warn','Could not read setting '+key+': '+error.message,'settings');return fallback}
+};
+const writeStoredValue=(key,value)=>{
+ try{localStorage.setItem(key,value);return true}
+ catch(error){window.__retrotitlesLog?.('warn','Could not save setting '+key+': '+error.message,'settings');return false}
+};
+function readStoredObject(key,fallback){
+ const value=readStoredValue(key,'');
+ if(!value)return fallback;
+ try{const parsed=JSON.parse(value);return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:fallback}
+ catch(error){window.__retrotitlesLog?.('warn','Could not parse saved setting '+key+': '+error.message,'settings');return fallback}
+}
+const displaySettings={renderer:'auto',vsync:true,performanceOverlay:false,...readStoredObject('retrotitles-display-settings',{})};
+if(!['auto','webgl2'].includes(displaySettings.renderer))displaySettings.renderer='auto';
+let shaderOverrides=readStoredObject('retrotitles-shader-overrides',{});
+const savedShader=readStoredValue('retrotitles-emulator-shader','disabled');
+if(savedShader)emulatorShader=savedShader;
+function persistShader(value){
+ emulatorShader=value||'disabled';
+ writeStoredValue('retrotitles-emulator-shader',emulatorShader);
+}
+function persistDisplaySettings(){
+ writeStoredValue('retrotitles-display-settings',JSON.stringify(displaySettings));
+}
+function populateShaderOptions(){
+ const select=$('emulator-shader'),custom=$('custom-shader');
+ select.replaceChildren(new Option('Default', 'disabled'));
+ availableShaders.forEach(shader=>select.add(new Option(shader,shader)));
+ select.add(new Option('Custom shader key', 'custom'));
+ if(availableShaders.includes(emulatorShader)||emulatorShader==='disabled'){
+  select.value=emulatorShader;custom.value='';
+ }else{
+  select.value='custom';custom.value=emulatorShader;
+ }
+ document.querySelectorAll('[data-system-shader]').forEach(option=>{
+  const selected=shaderOverrides[option.dataset.systemShader]||'';
+  option.replaceChildren(new Option('Use default shader',''),...availableShaders.map(shader=>new Option(shader,shader)));
+  option.value=selected;
+ });
+}
+$('emulator-shader').onchange=()=>{
+ if($('emulator-shader').value==='custom'){$('custom-shader').focus();return}
+ $('custom-shader').value='';persistShader($('emulator-shader').value);
+};
+$('custom-shader').addEventListener('change',()=>persistShader($('custom-shader').value.trim()||'disabled'));
+$('renderer-setting').value=displaySettings.renderer;
+$('renderer-setting').onchange=()=>{displaySettings.renderer=$('renderer-setting').value;persistDisplaySettings()};
+$('vsync-setting').checked=displaySettings.vsync!==false;
+$('vsync-setting').onchange=()=>{displaySettings.vsync=$('vsync-setting').checked;persistDisplaySettings()};
+$('performance-overlay').checked=Boolean(displaySettings.performanceOverlay);
+$('performance-overlay').onchange=()=>{displaySettings.performanceOverlay=$('performance-overlay').checked;persistDisplaySettings()};
+populateShaderOptions();
 function runtimeAssetUrl(path){return new URL(path+(path.includes('?')?'&':'?')+'v='+EMULATORJS_VERSION,location.href).href}
+function renderSystemShaderOverrides(){
+ const container=$('system-shader-overrides');
+ const systems=Array.from($('core-select').options).filter(option=>option.value);
+ container.replaceChildren(...systems.map(option=>{
+  const label=document.createElement('label');label.className='lp-setting-row';
+  const title=document.createElement('span');title.textContent=option.textContent;
+  const select=document.createElement('select');select.dataset.systemShader=option.value;select.setAttribute('aria-label',option.textContent+' shader');
+  select.replaceChildren(new Option('Use default shader',''),...availableShaders.map(shader=>new Option(shader,shader)));
+  select.value=shaderOverrides[option.value]||'';
+  select.addEventListener('change',()=>{
+   if(select.value)shaderOverrides[option.value]=select.value;else delete shaderOverrides[option.value];
+   writeStoredValue('retrotitles-shader-overrides',JSON.stringify(shaderOverrides));
+  });
+  label.append(title,select);return label;
+ }));
+}
+renderSystemShaderOverrides();
+function loadRuntimeShaders(){
+ const root=runtimeIsLocal()?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/';
+ const script=document.createElement('script');script.crossOrigin='anonymous';script.src=runtimeAssetUrl(root+'src/shaders.js');
+ script.onload=()=>{
+  const runtimeShaders=window.EJS_SHADERS&&Object.keys(window.EJS_SHADERS);
+  if(runtimeShaders?.length)availableShaders=runtimeShaders;
+  else window.__retrotitlesLog?.('warn','EmulatorJS returned no shader definitions; using the bundled shader fallback list.','settings');
+  populateShaderOptions();script.remove();
+ };
+ script.onerror=()=>{
+  window.__retrotitlesLog?.('warn','Could not load EmulatorJS shader definitions; using the bundled shader fallback list.','settings');
+  script.remove();
+ };
+ document.head.appendChild(script);
+}
+loadRuntimeShaders();
+function shaderForSystem(system){return shaderOverrides[system]||emulatorShader}
+function emulatorOptions(system){
+ const options={shader:shaderForSystem(system),vsync:displaySettings.vsync?'enabled':'disabled',fps:displaySettings.performanceOverlay?'show':'hide'};
+ if(displaySettings.renderer==='webgl2')options.webgl2Enabled='enabled';
+ return options;
+}
 async function checkRuntimeAssets(system,cores){
  const root=runtimeIsLocal()?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/';
  const common=['loader.js','emulator.min.js','emulator.min.css'];
@@ -163,7 +278,7 @@ function romPage(source,system,n,streamed=false,coreId=system,biosPath=''){
   },500);
   addEventListener('pagehide',()=>{clearInterval(timer);window.__rtCleanup()});
  };
- return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#game{width:100%;height:100%}</style></head><body><div id="game"></div><script>\n('+bustFn.toString()+')('+JSON.stringify(EMULATORJS_VERSION)+');EJS_player="#game";EJS_core='+JSON.stringify(coreId)+';EJS_threads='+JSON.stringify(shared)+'&&window.crossOriginIsolated;EJS_gameName='+JSON.stringify(n)+';EJS_pathtodata='+JSON.stringify(root)+';EJS_startOnLoaded=true;EJS_defaultOptions={shader:'+JSON.stringify(emulatorShader)+'};EJS_gameUrl='+JSON.stringify(streamed?source:'data:application/octet-stream;base64,'+source)+';EJS_biosUrl='+JSON.stringify(biosPath?new URL(biosPath,location.href).href:'')+';EJS_ready=function(){parent.postMessage({type:"rt-emulator-ready",runId:'+loadSequence+'},"*")};('+monitorFn.toString()+')('+loadSequence+');\n<\/script><script src="'+runtimeAssetUrl(root+'loader.js')+'" crossorigin="anonymous" onerror=\'document.getElementById("game").textContent='+JSON.stringify(failure)+';parent.postMessage({type:"rt-emulator-failed",reason:'+JSON.stringify(failure)+',runId:'+loadSequence+'},"*")\'><\/script></body></html>';
+ return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#game{width:100%;height:100%}</style></head><body><div id="game"></div><script>\n('+bustFn.toString()+')('+JSON.stringify(EMULATORJS_VERSION)+');EJS_player="#game";EJS_core='+JSON.stringify(coreId)+';EJS_threads='+JSON.stringify(shared)+'&&window.crossOriginIsolated;EJS_gameName='+JSON.stringify(n)+';EJS_pathtodata='+JSON.stringify(root)+';EJS_startOnLoaded=true;EJS_defaultOptions='+JSON.stringify(emulatorOptions(system))+';EJS_gameUrl='+JSON.stringify(streamed?source:'data:application/octet-stream;base64,'+source)+';EJS_biosUrl='+JSON.stringify(biosPath?new URL(biosPath,location.href).href:'')+';EJS_ready=function(){parent.postMessage({type:"rt-emulator-ready",runId:'+loadSequence+'},"*")};('+monitorFn.toString()+')('+loadSequence+');\n<\/script><script src="'+runtimeAssetUrl(root+'loader.js')+'" crossorigin="anonymous" onerror=\'document.getElementById("game").textContent='+JSON.stringify(failure)+';parent.postMessage({type:"rt-emulator-failed",reason:'+JSON.stringify(failure)+',runId:'+loadSequence+'},"*")\'><\/script></body></html>';
 }
 async function prepareRom(source,system,title,streamed,loadId){
  const biosPath=await findRequiredBios(system),cores=await checkRuntimeAssets(system,systemCores(system));
@@ -248,7 +363,7 @@ async function build(z,loadId=loadSequence){const names=Object.keys(z.files).fil
  return '<!DOCTYPE html>\n'+doc.documentElement.outerHTML;
 }
 
-const CTRL_FN=function(){
+const CTRL_FN=function(scope,fallbackScope,configuredMap){
  if(window.__grcLoader)return;window.__grcLoader=1;
  function createControls(){
  if(window.__grc)return;window.__grc=1;
@@ -257,8 +372,20 @@ const CTRL_FN=function(){
  var ACT=[['up','Up'],['down','Down'],['left','Left'],['right','Right'],['a','A'],['b','B'],['x','X'],['y','Y'],['start','Start']];
  var DEF={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'};
  var map={},k;for(k in DEF)map[k]=DEF[k];
- try{var sv=JSON.parse(localStorage.getItem('gr-keys'));if(sv)for(k in sv)if(map[k]&&NAMES.indexOf(sv[k])>-1)map[k]=sv[k]}catch(e){}
- function save(){try{localStorage.setItem('gr-keys',JSON.stringify(map))}catch(e){}}
+ var scopeName=scope||'default',savedMaps={},sv=configuredMap||null;
+ if(!sv){
+  try{savedMaps=JSON.parse(localStorage.getItem('retrotitles-control-mappings')||'{}')||{}}catch(e){console.warn('Could not read control mappings:',e)}
+  sv=savedMaps[scopeName]||savedMaps[fallbackScope||'']||savedMaps.default||null;
+  if(!sv)try{sv=JSON.parse(localStorage.getItem('gr-keys'))}catch(e){console.warn('Could not read legacy control mappings:',e)}
+ }
+ if(sv)for(k in sv)if(map[k]&&NAMES.indexOf(sv[k])>-1)map[k]=sv[k];
+ function save(){
+  savedMaps[scopeName]=map;
+  try{
+   if(scopeName==='default')localStorage.setItem('gr-keys',JSON.stringify(map));
+   localStorage.setItem('retrotitles-control-mappings',JSON.stringify(savedMaps));
+  }catch(e){parent.postMessage({type:'rt-controls-save',scope:scopeName,mapping:map},'*')}
+ }
  function spec(n){if(SP[n])return{keyCode:SP[n][0],code:SP[n][1],key:SP[n][2]};if(/^[0-9]$/.test(n))return{keyCode:n.charCodeAt(0),code:'Digit'+n,key:n};return{keyCode:n.charCodeAt(0),code:'Key'+n,key:n.toLowerCase()}}
  function target(){var a=document.activeElement;if(a&&a!==document.body&&a!==document.documentElement)return a;return document.querySelector('canvas,ruffle-player,ruffle-embed')||document}
  function fire(type,n){var s=spec(n);var e=new KeyboardEvent(type,{key:s.key,code:s.code,bubbles:true,cancelable:true});['keyCode','which'].forEach(function(p){try{Object.defineProperty(e,p,{get:function(){return s.keyCode}})}catch(x){}});target().dispatchEvent(e)}
@@ -339,9 +466,10 @@ const PLAYER_LOG_FN=function(){
   };
  });
 };
-const addCtl=(h,includeControls=true)=>{
+const addCtl=(h,includeControls=true,controlScope='default',fallbackScope='default')=>{
  const diagnostics='<script>('+PLAYER_LOG_FN.toString()+')()<\/script>';
- const controls=includeControls?'<script>('+CTRL_FN.toString()+')()<\/script>':'';
+ const configuredMap={...(controlMappings.default||{}),...(controlMappings[fallbackScope]||{}),...(controlMappings[controlScope]||{})};
+ const controls=includeControls?'<script>('+CTRL_FN.toString()+')('+JSON.stringify(controlScope)+','+JSON.stringify(fallbackScope)+','+JSON.stringify(configuredMap)+')<\/script>':'';
  let page=h,head=/<head[^>]*>/i.exec(page);
  if(head)page=page.slice(0,head.index+head[0].length)+diagnostics+page.slice(head.index+head[0].length);
  else page=diagnostics+page;
@@ -350,7 +478,7 @@ const addCtl=(h,includeControls=true)=>{
 };
 
 
-let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null,customControlsAvailable=true,activeRom=null;
+let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null,customControlsAvailable=true,activeRom=null,activeControlScope='default';
 const hasTouchInput=()=>Boolean(navigator.maxTouchPoints>0||window.matchMedia?.('(pointer: coarse)').matches);
 const canSW=()=>'serviceWorker' in navigator&&window.isSecureContext;
 function withTimeout(promise,milliseconds,message){
@@ -398,8 +526,9 @@ function cleanupGame(){
  try{$('fr').contentWindow?.__rtCleanup?.()}catch(error){window.__retrotitlesLog?.('warn','Could not clean up the previous emulator: '+error.message,'runtime')}
  gameObjectUrls.forEach(url=>URL.revokeObjectURL(url));gameObjectUrls.clear();
  activeRom=null;streamUrl=null;provider=null;providerId=null;
- $('fr').removeAttribute('srcdoc');$('fr').src='about:blank';$('stage').style.display='none';$('save-manager').hidden=true;
+ $('fr').removeAttribute('srcdoc');$('fr').src='about:blank';$('stage').style.display='none';$('save-manager').hidden=true;$('ctl').hidden=true;syncPlayEmpty();
 }
+function syncPlayEmpty(){$('play-empty').hidden=$('stage').style.display!=='none'}
 function cancelCurrentLoad(){
  if($('load-cancel').hidden)return;
  loadSequence++;
@@ -408,9 +537,74 @@ function cancelCurrentLoad(){
  msg('Load canceled. Choose the file again to retry.');
 }
 function setLoadedTitle(title,size=''){$('title-name').textContent=title||'Local title';$('title-size').textContent=size}
+const controlActions=[['up','Up'],['down','Down'],['left','Left'],['right','Right'],['a','A'],['b','B'],['x','X'],['y','Y'],['start','Start']];
+const controlKeyNames=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
+let controlMappings=readStoredObject('retrotitles-control-mappings',{});
+if(!controlMappings.default){
+ const legacyMapping=readStoredObject('gr-keys',null);
+ if(legacyMapping){controlMappings.default=legacyMapping;writeStoredValue('retrotitles-control-mappings',JSON.stringify(controlMappings))}
+}
+let controlsSystem='default',controlsRecord=null;
+let touchControlsEnabled=readStoredValue('retrotitles-touch-controls','true')!=='false';
+function controlScope(){return controlsRecord?'game:'+controlsRecord.id:controlsSystem}
+function renderControllerStatus(){
+ const status=$('controller-status'),gamepads=$('gamepad-mapping-list');
+ try{
+  const connected=navigator.getGamepads?Array.from(navigator.getGamepads()).filter(Boolean):[];
+  status.textContent=connected.length
+   ?connected.map(gamepad=>gamepad.id||'Connected controller').join(', ')+' connected'
+   :'No controller detected. Connect a gamepad to use EmulatorJS input.';
+  gamepads.textContent=controlsSystem==='default'
+   ?'Browser titles use the connected controller’s native mapping.'
+   :'For '+$('controls-system').selectedOptions[0].textContent+', EmulatorJS applies the core’s gamepad bindings. Remapping is available in its in-game settings.';
+ }catch(error){
+  status.textContent='Controller status is unavailable: '+error.message;
+  gamepads.textContent='Gamepad mappings are managed by the active player.';
+  window.__retrotitlesLog?.('warn','Could not inspect connected controllers: '+error.message,'controls');
+ }
+}
+function renderKeyboardMappings(){
+ const systemSelect=$('controls-system'),scope=controlScope(),systemMap=controlMappings[controlsSystem]||{},gameMap=controlsRecord?controlMappings[scope]||{}:{};
+ const mappings={...(controlMappings.default||{}),...systemMap,...gameMap},container=$('keyboard-mapping-list');
+ systemSelect.value=controlsSystem;systemSelect.disabled=Boolean(controlsRecord);
+ $('controls-scope-note').textContent=controlsRecord
+  ?'Per-game overrides for '+(controlsRecord.name||controlsRecord.path)+'; saved separately from system defaults.'+(controlsRecord.system?' EmulatorJS input bindings for this system remain in its in-game menu.':'')
+  :'Mappings are saved per system and apply to supported browser titles.';
+ container.replaceChildren(...controlActions.map(([action,label])=>{
+  const row=document.createElement('label');row.className='lp-mapping-row';
+  const title=document.createElement('span');title.textContent=label;
+  const select=document.createElement('select');select.setAttribute('aria-label',label+' keyboard key');
+  controlKeyNames.forEach(key=>select.add(new Option(key,key)));
+  select.value=mappings[action]||({up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'})[action];
+  select.disabled=Boolean(controlsRecord?.system);
+  select.addEventListener('change',()=>{
+   const current=controlMappings[scope]||{};
+   controlMappings[scope]={...current,[action]:select.value};
+   if(writeStoredValue('retrotitles-control-mappings',JSON.stringify(controlMappings)))msg('Saved '+label+' mapping for '+(controlsRecord?.name||controlsSystem)+'.');
+  });
+  row.append(title,select);return row;
+ }));
+ renderControllerStatus();
+}
+ $('controls-system').add(new Option('Browser titles (default)','default'));
+Array.from($('core-select').options).filter(option=>option.value).forEach(option=>$('controls-system').add(new Option(option.textContent,option.value)));
+$('controls-system').addEventListener('change',()=>{
+ controlsSystem=$('controls-system').value||'default';controlsRecord=null;renderKeyboardMappings();
+});
+$('touch-controls-toggle').checked=touchControlsEnabled;
+$('touch-controls-toggle').addEventListener('change',()=>{
+ touchControlsEnabled=$('touch-controls-toggle').checked;
+ writeStoredValue('retrotitles-touch-controls',String(touchControlsEnabled));
+});
+window.addEventListener('gamepadconnected',renderControllerStatus);
+window.addEventListener('gamepaddisconnected',renderControllerStatus);
+window.__retrotitlesOpenControls=record=>{
+ controlsRecord=record;controlsSystem=record.system||'default';renderKeyboardMappings();activateTab('controls');
+};
+renderKeyboardMappings();
 window.__retrotitlesSaveManager({$,msg,sizeLabel,getTitleName:()=>name});
 window.__retrotitlesFileManager({
- $,msg,sizeLabel,openFile:file=>load(file,{ingested:true}),
+ $,msg,sizeLabel,openFile:(file,record)=>load(file,{ingested:true,source:'library',record}),
  extractArchive:async file=>{
   const extension=file.name.split('.').pop().toLowerCase();
   if(extension==='zip')return zipEntries(file);
@@ -472,7 +666,7 @@ async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
    if(!blob){blob=await e.get();cache.set(e,blob);if(cache.size>2)cache.delete(cache.keys().next().value)}
   const enc=/\.br$/i.test(e.name)?'br':/\.gz$/i.test(e.name)?'gzip':'';
   let type=mimeOf(e.name.replace(/\.(br|gz)$/i,''));
-  if(path===indexRel){blob=new Blob([addCtl(await blob.text())],{type:'text/html'});type='text/html'}
+  if(path===indexRel){blob=new Blob([addCtl(await blob.text(),true,activeControlScope,activeControlScope)],{type:'text/html'});type='text/html'}
   return{blob,type,encoding:enc};
  };
  streamUrl=new URL('__game/'+providerId+'/'+indexRel.split('/').map(encodeURIComponent).join('/'),location.href).href;
@@ -509,10 +703,10 @@ function showStream(controls=true,page=''){
  customControlsAvailable=controls;
  $('dl').disabled=$('cp').disabled=true;$('ctl').hidden=!controls;
  $('fr').setAttribute('sandbox','allow-scripts allow-same-origin allow-pointer-lock allow-forms allow-modals');
- $('stage').style.display='block';play();
+ $('stage').style.display='block';syncPlayEmpty();activateTab('play');play();
 }
 async function loadFolder(files,paths=[],requestedLoadId=0){
- if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=requestedLoadId||++loadSequence;if(loadId!==loadSequence)return;const folderName=(paths[0]||files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';cleanupGame();customControlsAvailable=true;name=folderName;resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Checking '+files.length+' folder files…',true);
+ if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=requestedLoadId||++loadSequence;if(loadId!==loadSequence)return;const folderName=(paths[0]||files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';cleanupGame();activeControlScope='default';customControlsAvailable=true;name=folderName;resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Checking '+files.length+' folder files…',true);
  try{
    const entries=files.map((f,index)=>({name:paths[index]||f.webkitRelativePath||f.name,get:async()=>f}));
    const names=entries.map(entry=>entry.name);
@@ -537,7 +731,7 @@ function show(open){
  $('dl').disabled=$('cp').disabled=!portable;
  $('ctl').hidden=!customControlsAvailable;
  $('fr').setAttribute('sandbox','allow-scripts allow-pointer-lock allow-forms allow-modals'+(open?' allow-same-origin':''));
- $('stage').style.display='block';play();
+ $('stage').style.display='block';syncPlayEmpty();activateTab('play');play();
 }
 let touchControlsOn=false;
 function setTouchControlsActive(active){touchControlsOn=active;$('ctl').setAttribute('aria-pressed',String(active));$('ctl').classList.toggle('lp-touch-active',active);$('ctl-label').textContent=active?'Hide screen controls':'Show screen controls'}
@@ -545,7 +739,7 @@ function resetTouchControls(){setTouchControlsActive(false)}
 function play(){
  resetTouchControls();
  const f=$('fr');
- f.onload=()=>{if(customControlsAvailable&&hasTouchInput()){setTouchControlsActive(true);f.contentWindow.postMessage('gr-show','*')}};
+ f.onload=()=>{if(touchControlsEnabled&&customControlsAvailable&&hasTouchInput()){setTouchControlsActive(true);f.contentWindow.postMessage('gr-show','*')}};
  if(streamUrl&&!html){f.removeAttribute('srcdoc');f.src='about:blank';setTimeout(()=>f.src=streamUrl,60)}else{f.removeAttribute('src');f.srcdoc=html}
 }
 let softFullscreen=false,fullscreenScrollY=0;
@@ -612,9 +806,10 @@ async function openArchiveGame(entries,selectedCore,loadId){
  await load(gameFile,{ingested:true});
  return true;
 }
-async function load(file,{ingested=false,source='picker'}={}){
+async function load(file,{ingested=false,source='picker',record=null}={}){
  if(!file)return;
  const ext=file.name.split('.').pop().toLowerCase(),selectedCore=$('core-select').value||CORES[ext];
+ activeControlScope=record?'game:'+record.id:selectedCore||'default';
  const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
  const archiveZip=ext==='zip'&&!selectedCore;
  const memoryLimit=(navigator.deviceMemory||4)*128*1024*1024,memoryWarning=file.size>Math.min(SYSTEM_SIZE_LIMITS[selectedCore]||512*1024*1024,memoryLimit);
@@ -686,7 +881,7 @@ async function load(file,{ingested=false,source='picker'}={}){
   }
   if(ext==='swf'&&file.size>=STREAM_THRESHOLD){
    if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
-   html=addCtl(swfPage(streamUrl,true));portable=false;
+   html=addCtl(swfPage(streamUrl,true),true,activeControlScope,record?.system||selectedCore||'default');portable=false;
    msg('Local file ready ('+sizeLabel(file.size)+'), served in chunks.');showStream(true,html);return;
   }
   if(archiveZip&&file.size>=STREAM_THRESHOLD){
@@ -721,7 +916,7 @@ async function load(file,{ingested=false,source='picker'}={}){
   else throw new Error('Unsupported file type: .'+ext);
   if(loadId!==loadSequence)return;
   html=loadedHtml;
-  if(ctl)html=addCtl(html,!selectedCore);$('ctl').hidden=!customControlsAvailable;
+  if(ctl)html=addCtl(html,!selectedCore,activeControlScope,record?.system||selectedCore||'default');$('ctl').hidden=!customControlsAvailable;
   msg('Ready: '+titleType+' — '+file.name+(portable?'':' (This build can\u2019t be exported as a single file; host the original folder instead)'));
   if(selectedCore)showIsolationWarning(selectedCore);
   show(open);
@@ -795,6 +990,20 @@ $('drop').ondrop=async e=>{
  }catch(error){msg('Could not add dropped files: '+error.message,false,'error')}
 };
 window.addEventListener('message',event=>{
+ if(event.source===$('fr').contentWindow&&event.data?.type==='rt-controls-save'){
+  const {scope,mapping}=event.data;
+  if(scope!==activeControlScope||!mapping||typeof mapping!=='object'||Array.isArray(mapping))return;
+  const safeMapping={};
+  for(const [action,key] of controlActions){
+   if(typeof mapping[action]==='string'&&controlKeyNames.includes(mapping[action]))safeMapping[action]=mapping[action];
+  }
+  controlMappings[scope]=safeMapping;
+  if(writeStoredValue('retrotitles-control-mappings',JSON.stringify(controlMappings))){
+   if(!controlsRecord)msg('Saved in-game keyboard mappings.');
+   if($('tab-controls').getAttribute('aria-selected')==='true'&&controlScope()===scope)renderKeyboardMappings();
+  }
+  return;
+ }
  if(event.source!==$('fr').contentWindow||event.data?.type!=='rt-emulator-failed'||!activeRom||event.data.runId!==activeRom.loadId)return;
  const current=activeRom.cores.indexOf(activeRom.coreId),alternate=activeRom.cores[current+1];
  if(alternate){
