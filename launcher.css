@@ -1159,6 +1159,9 @@ html, body { margin: 0; min-height: 100%; }
 .lp-setting-toggle { min-height: 48px; }
 .lp-mapping-row select { min-height: 42px; border-color: var(--lp-line); border-radius: 9px; }
 .lp-setting-row select, .lp-setting-row input { min-height: 42px; }
+.lp-settings-content .lp-setting-row { flex-wrap: wrap; }
+.lp-settings-content .lp-setting-row select { max-width: 230px; }
+.lp-settings-content .lp-setting-row input[type="text"] { max-width: 230px; }
 .lp-danger-zone {
   border-color: #eccbc3; background: #fff8f6;
 }

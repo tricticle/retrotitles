@@ -112,8 +112,11 @@ function readStoredObject(key,fallback){
  try{const parsed=JSON.parse(value);return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:fallback}
  catch(error){window.__retrotitlesLog?.('warn','Could not parse saved setting '+key+': '+error.message,'settings');return fallback}
 }
-const displaySettings={renderer:'auto',vsync:true,performanceOverlay:false,...readStoredObject('retrotitles-display-settings',{})};
+const displaySettings={renderer:'auto',vsync:true,performanceOverlay:false,upscaleFilter:'auto',displayScale:'fit',aspectRatio:'auto',integerScaling:false,pauseOnHidden:false,muteOnHidden:false,...readStoredObject('retrotitles-display-settings',{})};
 if(!['auto','webgl2'].includes(displaySettings.renderer))displaySettings.renderer='auto';
+if(!['auto','nearest','sharp','smooth'].includes(displaySettings.upscaleFilter))displaySettings.upscaleFilter='auto';
+if(!['fit','100','150','200','integer'].includes(displaySettings.displayScale))displaySettings.displayScale='fit';
+if(!['auto','4:3','16:9','stretch'].includes(displaySettings.aspectRatio))displaySettings.aspectRatio='auto';
 let shaderOverrides=readStoredObject('retrotitles-shader-overrides',{});
 const savedShader=readStoredValue('retrotitles-emulator-shader','disabled');
 if(savedShader)emulatorShader=savedShader;
@@ -155,6 +158,18 @@ $('vsync-setting').checked=displaySettings.vsync!==false;
 $('vsync-setting').onchange=()=>{displaySettings.vsync=$('vsync-setting').checked;persistDisplaySettings()};
 $('performance-overlay').checked=Boolean(displaySettings.performanceOverlay);
 $('performance-overlay').onchange=()=>{displaySettings.performanceOverlay=$('performance-overlay').checked;persistDisplaySettings()};
+$('upscale-filter').value=displaySettings.upscaleFilter;
+$('upscale-filter').onchange=()=>{displaySettings.upscaleFilter=$('upscale-filter').value;persistDisplaySettings();syncEmulatorDisplaySettings()};
+$('display-scale').value=displaySettings.displayScale;
+$('display-scale').onchange=()=>{displaySettings.displayScale=$('display-scale').value;persistDisplaySettings();syncEmulatorDisplaySettings()};
+$('aspect-ratio').value=displaySettings.aspectRatio;
+$('aspect-ratio').onchange=()=>{displaySettings.aspectRatio=$('aspect-ratio').value;persistDisplaySettings();syncEmulatorDisplaySettings()};
+$('integer-scaling').checked=displaySettings.integerScaling;
+$('integer-scaling').onchange=()=>{displaySettings.integerScaling=$('integer-scaling').checked;if(displaySettings.integerScaling)displaySettings.displayScale='integer';else if(displaySettings.displayScale==='integer')displaySettings.displayScale='fit';$('display-scale').value=displaySettings.displayScale;persistDisplaySettings();syncEmulatorDisplaySettings()};
+$('pause-on-hidden').checked=Boolean(displaySettings.pauseOnHidden);
+$('pause-on-hidden').onchange=()=>{displaySettings.pauseOnHidden=$('pause-on-hidden').checked;persistDisplaySettings()};
+$('mute-on-hidden').checked=Boolean(displaySettings.muteOnHidden);
+$('mute-on-hidden').onchange=()=>{displaySettings.muteOnHidden=$('mute-on-hidden').checked;persistDisplaySettings()};
 populateShaderOptions();
 function runtimeAssetUrl(path){return new URL(path+(path.includes('?')?'&':'?')+'v='+EMULATORJS_VERSION,location.href).href}
 function renderSystemShaderOverrides(){
@@ -273,6 +288,28 @@ function romPage(source,system,n,streamed=false,coreId=system,biosPath=''){
   };
   [window.WebGLRenderingContext?.prototype,window.WebGL2RenderingContext?.prototype].forEach(prototype=>watch(prototype,['drawArrays','drawElements']));
   watch(window.CanvasRenderingContext2D?.prototype,['putImageData','drawImage']);
+   let currentDisplaySettings=null;
+   const applyDisplaySettingsToCanvases=()=>{
+    const settings=currentDisplaySettings||{},canvases=document.querySelectorAll('canvas');
+    canvases.forEach(canvas=>{
+     canvas.style.imageRendering=settings.upscaleFilter==='nearest'||settings.integerScaling?'pixelated':'auto';
+     canvas.style.objectFit=settings.aspectRatio==='stretch'?'fill':'contain';
+     if(settings.aspectRatio==='4:3')canvas.style.aspectRatio='4 / 3';
+     else if(settings.aspectRatio==='16:9')canvas.style.aspectRatio='16 / 9';
+     else canvas.style.removeProperty('aspect-ratio');
+     if(settings.displayScale==='100')canvas.style.width='100%',canvas.style.height='100%';
+     else if(settings.displayScale==='150')canvas.style.width='150%',canvas.style.height='150%';
+     else if(settings.displayScale==='200')canvas.style.width='200%',canvas.style.height='200%';
+     else if(settings.displayScale==='integer'||settings.displayScale==='fit')canvas.style.width='100%',canvas.style.height='100%';
+    });
+   };
+   const applyDisplaySettings=event=>{
+    if(event.source!==parent||event.data?.type!=='rt-display-settings')return;
+    currentDisplaySettings=event.data.settings||{};
+    applyDisplaySettingsToCanvases();
+   };
+   window.addEventListener('message',applyDisplaySettings);
+   new MutationObserver(applyDisplaySettingsToCanvases).observe(document.documentElement,{childList:true,subtree:true});
   window.addEventListener('error',event=>report(event.message||'The emulator reported a loading error.'));
   window.addEventListener('unhandledrejection',event=>report(event.reason?.message||event.reason||'The emulator failed while loading.'));
   const started=Date.now();
@@ -795,6 +832,24 @@ function show(open){
 let touchControlsOn=false;
 function setTouchControlsActive(active){touchControlsOn=active;$('ctl').setAttribute('aria-pressed',String(active));$('ctl').classList.toggle('lp-touch-active',active);$('ctl-label').textContent=active?'Hide screen controls':'Show screen controls'}
 function resetTouchControls(){setTouchControlsActive(false)}
+function syncEmulatorDisplaySettings(){
+ try{
+  $('fr').contentWindow?.postMessage({type:'rt-display-settings',settings:displaySettings},'*');
+ }catch(error){
+  window.__retrotitlesLog?.('warn','Could not apply emulator display settings: '+error.message,'settings');
+ }
+}
+document.addEventListener('visibilitychange',()=>{
+ if(!activeRom)return;
+ const emulator=activeEmulatorInstance();
+ if(document.hidden){
+  if(displaySettings.pauseOnHidden)emulator?.pause?.();
+  if(displaySettings.muteOnHidden)applyGameAudioMuted(true);
+ }else{
+  if(displaySettings.pauseOnHidden)emulator?.resume?.();
+  if(displaySettings.muteOnHidden)applyGameAudio();
+ }
+});
 function activeEmulatorInstance(){
  if($('stage').style.display==='none')return null;
  try{
@@ -822,6 +877,12 @@ function syncGameSettings(){
  $('game-vsync').checked=ready?emulator.getSettingValue?.('vsync')!=='disabled':displaySettings.vsync!==false;
  $('game-fps').checked=ready?emulator.getSettingValue?.('fps')==='show':Boolean(displaySettings.performanceOverlay);
  $('game-renderer').value=displaySettings.renderer;
+ $('game-upscale-filter').value=displaySettings.upscaleFilter;
+ $('game-display-scale').value=displaySettings.displayScale;
+ $('game-aspect-ratio').value=displaySettings.aspectRatio;
+ $('game-integer-scaling').checked=displaySettings.integerScaling;
+ $('game-pause-on-hidden').checked=Boolean(displaySettings.pauseOnHidden);
+ $('game-mute-on-hidden').checked=Boolean(displaySettings.muteOnHidden);
  if(activeRom){
   const system=activeRom.system,hasOverride=Object.prototype.hasOwnProperty.call(shaderOverrides,system);
   const shader=hasOverride?shaderOverrides[system]:'default';
@@ -863,6 +924,15 @@ function applyGameShader(value){
  });
  emulator.changeSettingOption('shader',shaderOverrides[system]||emulatorShader);
  emulator.saveSettings?.();
+}
+function applyGameAudioMuted(muted){
+ const emulator=activeEmulatorInstance();
+ if(emulator&&typeof emulator.setVolume==='function'){
+  emulator.muted=muted;
+  emulator.setVolume(muted?0:(Number(emulator.volume)||0));
+ }else{
+  gameMediaTargets().forEach(element=>{element.muted=muted});
+ }
 }
 function applyGameAudio(){
  const volume=Number($('game-volume').value)/100,muted=$('game-mute').checked||volume===0,emulator=activeEmulatorInstance();
@@ -913,6 +983,7 @@ function play(){
    const showControls=touchControlsEnabled&&hasTouchInput();
    setTouchControlsActive(showControls);f.contentWindow.postMessage(showControls?'gr-show':'gr-hide','*');
   }
+  syncEmulatorDisplaySettings();
   syncGameSettings();
  };
  if(streamUrl&&!html){f.removeAttribute('srcdoc');f.src='about:blank';setTimeout(()=>f.src=streamUrl,60)}else{f.removeAttribute('src');f.srcdoc=html}
@@ -933,6 +1004,24 @@ $('game-vsync').addEventListener('change',()=>{
 $('game-fps').addEventListener('change',()=>{
  displaySettings.performanceOverlay=$('game-fps').checked;persistDisplaySettings();$('performance-overlay').checked=displaySettings.performanceOverlay;
  try{activeEmulatorInstance()?.changeSettingOption('fps',displaySettings.performanceOverlay?'show':'hide')}catch(error){msg('Could not update the FPS overlay: '+error.message,false,'error')}
+});
+$('game-upscale-filter').addEventListener('change',()=>{
+ displaySettings.upscaleFilter=$('game-upscale-filter').value;$('upscale-filter').value=displaySettings.upscaleFilter;persistDisplaySettings();syncEmulatorDisplaySettings();
+});
+$('game-display-scale').addEventListener('change',()=>{
+ displaySettings.displayScale=$('game-display-scale').value;$('display-scale').value=displaySettings.displayScale;displaySettings.integerScaling=displaySettings.displayScale==='integer';$('integer-scaling').checked=displaySettings.integerScaling;$('game-integer-scaling').checked=displaySettings.integerScaling;persistDisplaySettings();syncEmulatorDisplaySettings();
+});
+$('game-aspect-ratio').addEventListener('change',()=>{
+ displaySettings.aspectRatio=$('game-aspect-ratio').value;$('aspect-ratio').value=displaySettings.aspectRatio;persistDisplaySettings();syncEmulatorDisplaySettings();
+});
+$('game-integer-scaling').addEventListener('change',()=>{
+ displaySettings.integerScaling=$('game-integer-scaling').checked;$('integer-scaling').checked=displaySettings.integerScaling;if(displaySettings.integerScaling)displaySettings.displayScale='integer';else if(displaySettings.displayScale==='integer')displaySettings.displayScale='fit';$('display-scale').value=displaySettings.displayScale;$('game-display-scale').value=displaySettings.displayScale;persistDisplaySettings();syncEmulatorDisplaySettings();
+});
+$('game-pause-on-hidden').addEventListener('change',()=>{
+ displaySettings.pauseOnHidden=$('game-pause-on-hidden').checked;$('pause-on-hidden').checked=displaySettings.pauseOnHidden;persistDisplaySettings();
+});
+$('game-mute-on-hidden').addEventListener('change',()=>{
+ displaySettings.muteOnHidden=$('game-mute-on-hidden').checked;$('mute-on-hidden').checked=displaySettings.muteOnHidden;persistDisplaySettings();
 });
 $('game-renderer').addEventListener('change',()=>{
  try{updateGameRenderer($('game-renderer').value)}catch(error){msg('Could not update the renderer preference: '+error.message,false,'error')}
