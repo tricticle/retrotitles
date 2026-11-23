@@ -168,9 +168,9 @@
  <section id="file-manager" class="lp-library lp-file-manager" aria-labelledby="file-manager-title" hidden>
   <div class="lp-library-heading">
    <div><p class="lp-aside-label">On this device</p><h2 id="file-manager-title">File manager</h2></div>
-   <div class="lp-file-actions"><button id="library-add" class="lp-button" type="button" hidden>Add file handle</button><button id="file-import-button" class="lp-button" type="button">Add files</button><button id="file-refresh" class="lp-button" type="button">Refresh</button><button id="file-delete-selected" class="lp-button" type="button" disabled>Delete selected</button></div>
+   <div class="lp-file-actions"><button id="library-add" class="lp-button" type="button" hidden>Add file handle</button><button id="file-import-button" class="lp-button" type="button">Add files</button><input id="file-import-folder" class="lp-hidden-input" type="file" webkitdirectory directory multiple aria-label="Choose a folder to add"><button id="file-import-folder-button" class="lp-button" type="button">Add folder</button><button id="file-refresh" class="lp-button" type="button">Refresh</button><button id="file-delete-selected" class="lp-button" type="button" disabled>Delete selected</button></div>
   </div>
-  <p id="file-manager-status" class="lp-library-empty" aria-live="polite">Files are stored locally in this browser; they are not uploaded to a server.</p>
+  <p id="file-manager-status" class="lp-library-empty" aria-live="polite">Files and folders are stored locally in this browser, not uploaded. Drop files here to add them to the top level, or onto a folder to place them there.</p>
   <div class="lp-file-filters" aria-label="Filter files">
    <input id="file-search" type="search" placeholder="Search files…" aria-label="Search files">
    <select id="file-system-filter" aria-label="Filter by system"><option value="">All systems</option></select>

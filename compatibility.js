@@ -68,5 +68,38 @@
   }
   return[...missing];
  }
- window.__retrotitlesCompatibility={inspectRpgMaker,findRpgMakerIndex,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts};
+ async function filesFromDirectoryHandle(handle,onProgress=()=>{}){
+  const files=[];
+  const collectHandle=async(handle,prefix='')=>{
+   if(handle.kind==='file'){const file=await handle.getFile();files.push({file,path:prefix+file.name});onProgress(files.length);return}
+   for await(const [name,child] of handle.entries())await collectHandle(child,prefix+handle.name+'/');
+  };
+  await collectHandle(handle);
+  return files;
+ }
+ async function filesFromDrop(dataTransfer,onProgress=()=>{}){
+  const files=[];
+  for(const item of Array.from(dataTransfer.items||[])){
+   if(typeof item.getAsFileSystemHandle==='function'){
+    const handle=await item.getAsFileSystemHandle();
+    if(handle)files.push(...await filesFromDirectoryHandle(handle,count=>onProgress(files.length+count)));
+    continue;
+   }
+   const entry=item.webkitGetAsEntry?.();
+   if(entry){
+    const walk=async(current,prefix='')=>{
+     if(current.isFile){const file=await new Promise((resolve,reject)=>current.file(resolve,reject));files.push({file,path:prefix+file.name});onProgress(files.length);return}
+     if(current.isDirectory){
+      const reader=current.createReader();
+      while(true){const children=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!children.length)break;for(const child of children)await walk(child,prefix+current.name+'/')}
+     }
+    };
+    await walk(entry);continue;
+   }
+   const file=item.getAsFile?.();if(file){files.push({file,path:file.name});onProgress(files.length)}
+  }
+  if(files.length)return files;
+  return Array.from(dataTransfer.files||[]).map((file,index)=>{onProgress(index+1);return{file,path:file.webkitRelativePath||file.name}});
+ }
+ window.__retrotitlesCompatibility={inspectRpgMaker,findRpgMakerIndex,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop,filesFromDirectoryHandle};
 })();

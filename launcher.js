@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
-const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts}=window.__retrotitlesCompatibility;
+const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop}=window.__retrotitlesCompatibility;
 const EMULATORJS_VERSION='4.2.3';
 const desktopRpgMakerMessage='Native desktop RPG Maker/Steam builds cannot run in this browser. If the install includes a compatible MV/MZ browser export under www/ (index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js), choose the game folder or ZIP; otherwise run it through Steam.';
 const tabIds=['library','files','play','controls'];
@@ -1346,32 +1346,6 @@ $('fd').onchange=e=>{
  const loadId=++loadSequence;
  window.__retrotitlesIngestFiles(files,{source:'folder',onProgress:reportIngestProgress}).then(()=>{if(loadId===loadSequence)loadFolder(files,paths,loadId)}).catch(error=>msg('Could not add folder files: '+error.message,false,'error'));
 };
-async function filesFromDrop(dataTransfer,onProgress=()=>{}){
- const files=[];
- const collectHandle=async(handle,prefix='')=>{
-  if(handle.kind==='file'){const file=await handle.getFile();files.push({file,path:prefix+file.name});onProgress(files.length);return}
-  for await(const [name,child] of handle.entries())await collectHandle(child,prefix+handle.name+'/');
- };
- for(const item of Array.from(dataTransfer.items||[])){
-  if(typeof item.getAsFileSystemHandle==='function'){
-   const handle=await item.getAsFileSystemHandle();if(handle)await collectHandle(handle);continue;
-  }
-  const entry=item.webkitGetAsEntry?.();
-  if(entry){
-   const walk=async(current,prefix='')=>{
-    if(current.isFile){const file=await new Promise((resolve,reject)=>current.file(resolve,reject));files.push({file,path:prefix+current.name});onProgress(files.length);return}
-    if(current.isDirectory){
-     const reader=current.createReader();
-     while(true){const children=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!children.length)break;for(const child of children)await walk(child,prefix+current.name+'/')}
-    }
-   };
-   await walk(entry);continue;
-  }
-  const file=item.getAsFile?.();if(file){files.push({file,path:file.name});onProgress(files.length)}
- }
- if(files.length)return files;
- return Array.from(dataTransfer.files||[]).map((file,index)=>{onProgress(index+1);return{file,path:file.name}});
-}
 $('drop').ondragover=e=>{e.preventDefault();$('drop').classList.add('is-over')};
 $('drop').ondragleave=()=>$('drop').classList.remove('is-over');
 $('drop').ondrop=async e=>{

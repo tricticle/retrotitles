@@ -66,14 +66,6 @@
     request.onerror=()=>reject(request.error||new Error('Could not check for duplicate file paths.'));
    });
   }
-  async function getHashRecords(hash){
-   const db=await openDb();
-   return new Promise((resolve,reject)=>{
-    const request=db.transaction(STORE,'readonly').objectStore(STORE).index('hash').getAll(hash);
-    request.onsuccess=()=>resolve(request.result);
-    request.onerror=()=>reject(request.error||new Error('Could not check for duplicate file contents.'));
-   });
-  }
   async function getMetadata(key){
    const db=await openDb();
    return new Promise((resolve,reject)=>{
@@ -106,9 +98,8 @@
    if(previous&&previous.addedAt>record.addedAt)return{id:previous.id,duplicate:true,record:previous};
    if(previous&&previous.size===record.size&&previous.hash&&previous.hash===record.hash)return{id:previous.id,duplicate:true,record:previous};
    if(previous?.blob&&!record.blob&&!record.hash)return{id:previous.id,duplicate:true,record:previous};
-   if(!previous&&record.hash){
-    const duplicate=(await getHashRecords(record.hash)).find(item=>!item.superseded&&item.size===record.size);
-    if(duplicate)return{id:duplicate.id,duplicate:true,record:duplicate};
+   if(previous&&!window.confirm('Replace "'+previous.path+'" with the dropped or selected file?')){
+    return{id:previous.id,duplicate:true,replacementDeclined:true,record:previous};
    }
    const now=Date.now();
    if(previous){
@@ -131,7 +122,7 @@
    writeQueue=pending.catch(()=>{});
    return pending;
   }
-  async function ingestFiles(files,{source='picker',parentArchiveId=null,depth=0,emit=true,onProgress=null}={}){
+  async function ingestFiles(files,{source='picker',parentArchiveId=null,depth=0,emit=true,onProgress=null,onReplaceDeclined=null}={}){
    if(!supported){msg('This browser cannot store files locally. The selected title can still be opened, but it will not appear in the persistent file manager.',false,'warn');return[]}
    if(ready)await ready;
    const inputs=Array.from(files||[]).map(asInput).filter(item=>item.file);
@@ -156,6 +147,11 @@
      });
     }
     const saved=await queueRecord(record);
+    if(saved.replacementDeclined){
+     if(onReplaceDeclined)onReplaceDeclined(path);
+     else msg('Kept the existing file: '+path+'.',false,'info');
+     continue;
+    }
     results.push(saved.record);
     completedBytes+=Number(file.size)||0;
     onProgress?.({phase:'save',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index+1,total:progressTotal});
@@ -255,8 +251,16 @@
    await transactionDone(transaction);
    if(files.length||handles.length)window.__retrotitlesLog?.('info','Legacy file migration imported '+imported+' of '+migrated.length+' valid record(s) ('+files.length+' stored file(s), '+handles.length+' saved handle(s)).','file-index');
   }
-  function makeButton(text,label,action){
-   const button=document.createElement('button');button.type='button';button.className='lp-button';button.textContent=text;
+  function makeButton(text,label,action,iconName=''){
+   const button=document.createElement('button');button.type='button';button.className='lp-button';
+   if(iconName==='replace'){
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d','M20 7v5h-5M4 17v-5h5m-4.1-3A8 8 0 0 1 19 7l1 5M4 12l1 5a8 8 0 0 0 14.1 3');
+    icon.append(path);button.append(icon);
+   }
+   button.append(document.createTextNode(text));
    if(label)button.setAttribute('aria-label',label);
    button.onclick=action;return button;
   }
@@ -346,6 +350,15 @@
      const url=URL.createObjectURL(record.blob),link=document.createElement('a');link.href=url;link.download=record.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }));
    }
+   const replaceInput=document.createElement('input');replaceInput.type='file';replaceInput.className='lp-hidden-input';replaceInput.setAttribute('aria-label','Choose replacement for '+record.name);
+   replaceInput.onchange=event=>{
+    const file=event.target.files?.[0];event.target.value='';
+    if(file)ingestFiles([{file,path:record.path}],{source:'file-manager'}).then(records=>{
+     if(records.length)msg('Updated '+record.path+'.');
+    }).catch(error=>msg('Could not replace '+record.path+': '+error.message,false,'error'));
+   };
+   actions.append(makeButton('Replace','Replace '+record.name,()=>replaceInput.click(),'replace'));
+   actions.append(replaceInput);
    actions.append(makeButton('Remove','Remove '+record.name,()=>removeFile(record.id).catch(error=>msg('Could not remove file: '+error.message,false,'error'))));
    row.append(checkbox,fileInfo,tags,actions);
    return row;
@@ -392,12 +405,13 @@
     return node.fileCount;
    };
    folderCount(root);
-   const renderNode=(node,depth=0)=>{
+   const renderNode=(node,depth=0,prefix='')=>{
     const children=[];
     for(const folder of [...node.folders.values()].sort((a,b)=>a.name.localeCompare(b.name))){
      const item=document.createElement('li');item.className='lp-path-item';
      const details=document.createElement('details');details.className='lp-path-group';details.open=expandFolders;
      const summary=document.createElement('summary');
+     summary.dataset.folderPath=prefix+folder.name;
      const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
      icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');
      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -408,7 +422,7 @@
      const total=folder.fileCount;count.textContent=String(total);count.setAttribute('aria-label',total+' file'+(total===1?'':'s'));
      summary.append(icon,name,count);
      const nested=document.createElement('ul');nested.className='lp-path-children';
-     nested.append(...renderNode(folder,depth+1));
+     nested.append(...renderNode(folder,depth+1,prefix+folder.name+'/'));
      details.append(summary,nested);item.append(details);children.push(item);
     }
     node.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(record=>children.push(fileRow(record,parentNames)));
@@ -507,7 +521,7 @@
   manager.hidden=false;
   if(!supported){
    status.textContent='This browser does not support local file storage.';
-   $('file-import-button').disabled=true;$('library-add-files').disabled=true;$('file-refresh').disabled=true;$('file-rebuild').disabled=true;$('file-delete-selected').disabled=true;
+   $('file-import-button').disabled=true;$('file-import-folder-button').disabled=true;$('library-add-files').disabled=true;$('file-refresh').disabled=true;$('file-rebuild').disabled=true;$('file-delete-selected').disabled=true;
    $('runtime-cache-clear').onclick=()=>clearRuntimeCache().catch(error=>msg('Could not clear runtime cache: '+error.message,false,'error'));
    return;
   }
@@ -522,18 +536,77 @@
    libraryView=button.dataset.libraryView;refreshOnChange();
   }));
   $('file-import-button').onclick=()=>$('file-import').click();
+  $('file-import-folder-button').onclick=()=>{
+   if(!window.showDirectoryPicker){$('file-import-folder').click();return}
+   window.showDirectoryPicker().then(async handle=>{
+    const files=await window.__retrotitlesCompatibility.filesFromDirectoryHandle(handle);
+    if(!files.length){status.textContent='The selected folder contains no files.';return}
+    const skipped=[];
+    status.textContent='Adding '+files.length+' file'+(files.length===1?'':'s')+' from '+handle.name+'…';
+    await ingestFiles(files,{source:'folder',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)});
+    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Added '+files.length+' file'+(files.length===1?'':'s')+' locally.';
+    msg(skipped.length?'Kept existing files where replacement was declined.':'Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.');
+   }).catch(error=>{if(error.name!=='AbortError')msg('Could not add folder: '+error.message,false,'error')});
+  };
   $('file-refresh').onclick=refreshOnChange;
   $('file-rebuild').onclick=()=>rebuildIndex().catch(error=>msg('Could not rebuild the file index: '+error.message,false,'error'));
   $('runtime-cache-clear').onclick=()=>clearRuntimeCache().catch(error=>msg('Could not clear runtime cache: '+error.message,false,'error'));
   $('file-import').onchange=event=>{
    const files=Array.from(event.target.files||[]);event.target.value='';
    if(!files.length)return;
+   const skipped=[];
    status.textContent='Adding '+files.length+' file'+(files.length===1?'':'s')+'…';
-   ingestFiles(files,{source:'file-manager',onProgress:window.__retrotitlesIngestProgress}).then(()=>{
-    status.textContent='Added '+files.length+' file'+(files.length===1?'':'s')+' locally.';
-    msg('Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.');
+   ingestFiles(files,{source:'file-manager',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)}).then(()=>{
+    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Added '+files.length+' file'+(files.length===1?'':'s')+' locally.';
+    msg(skipped.length?'Kept existing files where replacement was declined.':'Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.');
    }).catch(error=>{status.textContent='Could not add the selected files.';msg('Could not save files: '+error.message,false,'error')});
   };
+  $('file-import-folder').onchange=event=>{
+   const files=Array.from(event.target.files||[]);event.target.value='';
+   if(!files.length)return;
+   const skipped=[];
+   status.textContent='Adding '+files.length+' file'+(files.length===1?'':'s')+' from folder…';
+   ingestFiles(files,{source:'folder',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)}).then(()=>{
+    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Added '+files.length+' file'+(files.length===1?'':'s')+' locally.';
+    msg(skipped.length?'Kept existing files where replacement was declined.':'Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.');
+   }).catch(error=>{status.textContent='Could not add the selected folder.';msg('Could not save folder files: '+error.message,false,'error')});
+  };
+  const setDropTarget=(target,active)=>{
+   manager.querySelector('.is-drop-target')?.classList.remove('is-drop-target');
+   manager.classList.remove('is-drop-target');
+   if(active)target.classList.add('is-drop-target');
+  };
+  const folderSummaryAt=target=>{
+   const summary=target.closest('summary[data-folder-path]');
+   return summary||target.closest('details.lp-path-group')?.querySelector('summary[data-folder-path]')||null;
+  };
+  manager.addEventListener('dragover',event=>{
+   if(!Array.from(event.dataTransfer?.types||[]).includes('Files'))return;
+   event.preventDefault();
+   const summary=folderSummaryAt(event.target);
+   if(summary)summary.closest('details').open=true;
+   setDropTarget(summary||manager,true);
+  });
+  manager.addEventListener('dragleave',event=>{
+   if(event.relatedTarget&&manager.contains(event.relatedTarget))return;
+   setDropTarget(null,false);
+  });
+  manager.addEventListener('drop',async event=>{
+   if(!Array.from(event.dataTransfer?.types||[]).includes('Files'))return;
+   event.preventDefault();event.stopPropagation();
+   const summary=folderSummaryAt(event.target),folderPath=summary?.dataset.folderPath||'';
+   setDropTarget(null,false);
+   try{
+    status.textContent='Scanning dropped files…';
+    const items=await window.__retrotitlesCompatibility.filesFromDrop(event.dataTransfer);
+    if(!items.length){status.textContent='No files were found in that drop.';return}
+    const destination=folderPath?folderPath+'/':'',files=items.map(item=>({file:item.file,path:destination+item.path})),skipped=[];
+    status.textContent='Adding '+files.length+' file'+(files.length===1?'':'s')+(folderPath?' to '+folderPath:'')+'…';
+    await ingestFiles(files,{source:'drag-drop',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)});
+    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Added '+files.length+' file'+(files.length===1?'':'s')+(folderPath?' to '+folderPath:'')+' locally.';
+    msg(skipped.length?'Kept existing files where replacement was declined.':'Added dropped files to the unified file view.');
+   }catch(error){status.textContent='Could not add the dropped files.';msg('Could not save dropped files: '+error.message,false,'error')}
+  });
   if(window.showOpenFilePicker&&window.indexedDB){
    $('library-add').hidden=false;
    $('library-add').onclick=async()=>{

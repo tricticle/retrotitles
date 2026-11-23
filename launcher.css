@@ -900,6 +900,8 @@ html, body { margin: 0; min-height: 100%; }
   font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .lp-path-group summary:hover { background: rgba(232, 236, 222, .72); }
+.lp-path-group summary.is-drop-target,
+.lp-file-manager.is-drop-target { outline: 2px dashed #718649; outline-offset: -3px; background: #f1f4e7; }
 .lp-path-group summary:focus-visible { outline: 3px solid rgba(113, 134, 73, .32); outline-offset: 2px; }
 .lp-path-group summary svg { width: 18px; height: 18px; color: #74875b; transition: transform .15s ease-out; }
 .lp-path-group[open] > summary svg { transform: scale(1.06); }
