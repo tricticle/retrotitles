@@ -361,6 +361,7 @@
    selectedFileIds.forEach(id=>{if(!currentIds.has(id))selectedFileIds.delete(id)});
    $('file-delete-selected').disabled=selectedFileIds.size===0;
    const parentNames=new Map(records.map(record=>[record.id,record.name]));
+   const expandFolders=$('file-search').value.trim().length>0;
    const root={folders:new Map(),files:[]};
    files.forEach(record=>{
     const parts=record.path.split('/').filter(Boolean),filename=parts.pop();
@@ -380,7 +381,7 @@
     const children=[];
     for(const folder of [...node.folders.values()].sort((a,b)=>a.name.localeCompare(b.name))){
      const item=document.createElement('li');item.className='lp-path-item';
-     const details=document.createElement('details');details.className='lp-path-group';details.open=depth===0;
+     const details=document.createElement('details');details.className='lp-path-group';details.open=expandFolders;
      const summary=document.createElement('summary');
      const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
      icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');

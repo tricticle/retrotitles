@@ -1,6 +1,7 @@
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
 const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts}=window.__retrotitlesCompatibility;
 const EMULATORJS_VERSION='4.2.3';
+const desktopRpgMakerMessage='Native desktop RPG Maker/Steam builds cannot run in this browser. If the install includes a compatible MV/MZ browser export under www/ (index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js), choose the game folder or ZIP; otherwise run it through Steam.';
 const tabIds=['library','files','play','controls'];
 function activateTab(id,focus=false){
  if(!tabIds.includes(id))return;
@@ -77,7 +78,6 @@ const BIOS_REQUIREMENTS={
  segaSaturn:{filename:'sega_101.bin',system:'segaSaturn'},
  '3do':{filename:'panafz10.bin',system:'3do'}
 };
-const SYSTEM_SIZE_LIMITS={psx:700*1024*1024,psp:1800*1024*1024};
 const requiresSharedArrayBuffer=system=>['psp','dos'].includes(String(system).toLowerCase());
 const systemCores=system=>SYSTEM_CORES[system]||[system];
 const runtimeIsLocal=()=>$('local-runtime').checked;
@@ -806,7 +806,7 @@ async function loadFolder(files,paths=[],requestedLoadId=0){
  try{
    const entries=files.map((f,index)=>({name:paths[index]||f.webkitRelativePath||f.name,get:async()=>f}));
    const names=entries.map(entry=>entry.name);
-   if(isDesktopRpgMaker(names))throw new Error('This is a desktop RPG Maker folder. Load an MV/MZ browser export containing index.html, data/System.json, and its js core files instead.');
+   if(isDesktopRpgMaker(names))throw new Error(desktopRpgMakerMessage);
    const rpgProject=inspectRpgMaker(names);
    if(rpgProject?.missing.length)throw new Error(rpgProject.name+' browser export is incomplete. Missing: '+rpgProject.missing.join(', ')+'. Re-export the project for Web browsers and include its complete data/ and js/ folders.');
    if(rpgProject){
@@ -1115,19 +1115,17 @@ async function openArchiveGame(entries,selectedCore,loadId){
 async function load(file,{ingested=false,source='picker',record=null}={}){
  if(!file)return;
  const ext=file.name.split('.').pop().toLowerCase(),selectedCore=$('core-select').value||CORES[ext];
+ if(['exe','rgssad','rgss3a'].includes(ext))throw new Error(desktopRpgMakerMessage);
  activeControlScope=record?'game:'+record.id:selectedCore||'default';
  const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
  const archiveZip=ext==='zip'&&!selectedCore;
- const memoryLimit=(navigator.deviceMemory||4)*128*1024*1024,memoryWarning=file.size>Math.min(SYSTEM_SIZE_LIMITS[selectedCore]||512*1024*1024,memoryLimit);
- if(memoryWarning&&!window.confirm('This '+(selectedCore||titleName)+' file is '+sizeLabel(file.size)+'. It may exceed available browser memory, especially on mobile or low-memory devices. Continue?'))return;
  if(activeReader)activeReader.cancel().catch(()=>{});
  const loadId=++loadSequence;
  if(!ingested)await window.__retrotitlesIngestFiles([file],{source});
  if(loadId!==loadSequence)return;
  customControlsAvailable=!selectedCore;
  const titleType=selectedCore?'EmulatorJS '+selectedCore+' title':({zip:'ZIP archive',rar:'RAR archive',html:'HTML title',htm:'HTML title',js:'JavaScript title',py:'Python title',swf:'Flash title',rpgmvp:'RPG Maker asset',rpgmvo:'RPG Maker asset',rpgmvm:'RPG Maker asset',rpgm:'RPG Maker asset',exe:'Desktop package',rgssad:'Desktop RPG Maker package',rgss3a:'Desktop RPG Maker package'})[ext]||'local file';
- const readStage=stage=>memoryWarning?stage+' (large file; browser memory may be limited)':stage;
- if(memoryWarning)window.__retrotitlesLog?.('warn','Large local file ('+sizeLabel(file.size)+'). Browser memory may be limited; streaming is preferable where supported.','app');
+ const readStage=stage=>stage;
  cleanupGame();activeGameRecord=record;
  $('copy-diagnostic').hidden=true;
  $('runtime-help').hidden=!Boolean(selectedCore);$('save-manager').hidden=!Boolean(selectedCore&&window.indexedDB);
@@ -1139,7 +1137,7 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
     entries=await zipEntries(file);
    if(loadId!==loadSequence)return;
     const rpgProject=inspectRpgMaker(entries.map(entry=>entry.name));
-    if(isDesktopRpgMaker(entries.map(entry=>entry.name)))throw new Error('This ZIP contains a desktop RPG Maker build. Load an MV/MZ browser export containing index.html, data/System.json, and its js core files instead.');
+    if(isDesktopRpgMaker(entries.map(entry=>entry.name)))throw new Error(desktopRpgMakerMessage);
     if(rpgProject?.missing.length)throw new Error(rpgProject.name+' browser export is incomplete. Missing: '+rpgProject.missing.join(', ')+'. Re-export the project for Web browsers and include its complete data/ and js/ folders.');
     if(rpgProject){
      msg('Checking '+rpgProject.name+' scripts…',true);
@@ -1217,7 +1215,6 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
   else if(ext==='swf')loadedHtml=swfPage(b64(await readFileBuffer(file,loadId,readStage('Reading SWF title'))));
   else if(ext==='py'){loadedHtml=pyPage(await readFileText(file,loadId,readStage('Reading Python title')));open=true;}
    else if(['rpgmvp','rpgmvo','rpgmvm','rpgm'].includes(ext))throw new Error('This is a single RPG Maker asset, not a complete project. Open the exported MV/MZ folder or ZIP containing index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js.');
-   else if(['exe','rgss3a','rgssad'].includes(ext))throw new Error('This is a desktop RPG Maker package. Desktop .exe and RGSS builds cannot run in this browser launcher; use an RPG Maker MV/MZ browser export folder or ZIP instead.');
   else if(selectedCore){loadedHtml=await prepareRom(b64(await readFileBuffer(file,loadId,readStage('Reading emulator title'))),selectedCore,titleName,false,loadId);open=true;}
   else throw new Error('Unsupported file type: .'+ext);
   if(loadId!==loadSequence)return;

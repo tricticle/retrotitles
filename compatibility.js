@@ -39,10 +39,11 @@
   return project&&!project.missing.length?project.index:'';
  }
  function isDesktopRpgMaker(names){
-  return names.some(name=>{
+  const hasDesktopRuntime=names.some(name=>{
    const path=norm(name);
    return /(^|\/)(game\.ini|game\.rgssad|game\.rgss3a)$/i.test(path)||/\.(rgssad|rgss3a)$/i.test(path);
   });
+  return hasDesktopRuntime&&!findRpgMakerIndex(names);
  }
  function findStreamIndex(names){
   const normalized=names.map(norm);
