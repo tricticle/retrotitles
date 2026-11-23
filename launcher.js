@@ -730,7 +730,8 @@ window.__retrotitlesOpenControls=record=>{
 renderKeyboardMappings();
 window.__retrotitlesSaveManager({$,msg,sizeLabel,getTitleName:()=>name});
 window.__retrotitlesFileManager({
- $,msg,sizeLabel,openFile:(file,record)=>load(file,{ingested:true,source:'library',record}),
+ $,msg,sizeLabel,openFile:(file,record,systemOverride)=>load(file,{ingested:true,source:'library',record,systemOverride}),
+ openFolder:(files,paths)=>loadFolder(files,paths),
  extractArchive:async file=>{
   const extension=file.name.split('.').pop().toLowerCase();
   if(extension==='zip')return zipEntries(file);
@@ -1212,11 +1213,12 @@ async function openArchiveGame(entries,selectedCore,loadId){
  await load(gameFile,{ingested:true});
  return true;
 }
-async function load(file,{ingested=false,source='picker',record=null}={}){
+async function load(file,{ingested=false,source='picker',record=null,systemOverride=''}={}){
  if(!file)return;
- const ext=file.name.split('.').pop().toLowerCase(),selectedCore=$('core-select').value||CORES[ext];
+ const ext=file.name.split('.').pop().toLowerCase(),selectedCore=systemOverride||$('core-select').value||CORES[ext];
  if(ext==='7z')throw new Error('7z archives are not supported. Extract this archive on your device, then open a supported file or folder.');
- if(!selectedCore&&['exe','rgssad','rgss3a'].includes(ext))throw new Error(desktopRpgMakerMessage);
+ if(!selectedCore&&ext==='exe')throw new Error('Native Windows .exe files cannot run in this browser. If this is a DOS program, use Try DOS in Files or Library; otherwise run the Windows version on a desktop.');
+ if(!selectedCore&&['rgssad','rgss3a'].includes(ext))throw new Error(desktopRpgMakerMessage);
  activeControlScope=record?'game:'+record.id:selectedCore||'default';
  const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
  const arcadeRomZip=ext==='zip'&&['arcade','mame'].includes(selectedCore);

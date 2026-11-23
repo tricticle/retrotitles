@@ -893,6 +893,9 @@ html, body { margin: 0; min-height: 100%; }
 .lp-file-tree, .lp-path-children { margin: 0; padding: 0; list-style: none; }
 .lp-file-tree { margin-top: 12px; border-top: 1px solid var(--lp-line); }
 .lp-path-item { min-width: 0; }
+.lp-folder-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0 6px; }
+.lp-folder-item > details { min-width: 0; }
+.lp-folder-item > .lp-folder-play { grid-column: 2; grid-row: 1; min-height: 36px; margin-top: 6px; }
 .lp-path-group { border-top: 1px solid #e1e4dc; }
 .lp-path-group summary {
   display: flex; min-height: 48px; align-items: center; gap: 10px;
@@ -939,6 +942,7 @@ html, body { margin: 0; min-height: 100%; }
   .lp-file-tags, .lp-file-row .lp-library-actions { grid-column: 2; }
   .lp-file-row .lp-library-actions { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
   .lp-file-row .lp-library-actions .lp-button { min-height: 44px; }
+  .lp-folder-item > .lp-folder-play { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lp-tab[aria-selected="true"] svg,

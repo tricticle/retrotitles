@@ -1,5 +1,5 @@
 (()=>{
- window.__retrotitlesFileManager=({$,msg,sizeLabel,openFile,extractArchive})=>{
+ window.__retrotitlesFileManager=({$,msg,sizeLabel,openFile,openFolder,extractArchive})=>{
   const DB_NAME='retrotitles-file-index',DB_VERSION=2,STORE='files',META='metadata';
   const LEGACY_DATABASES=['retrotitles-files','retrotitles-library'];
   const manager=$('file-manager'),list=$('file-list'),empty=$('file-empty'),status=$('file-manager-status');
@@ -253,11 +253,15 @@
   }
   function makeButton(text,label,action,iconName=''){
    const button=document.createElement('button');button.type='button';button.className='lp-button';
-   if(iconName==='replace'){
+   const iconPaths={
+    replace:'M20 7v5h-5M4 17v-5h5m-4.1-3A8 8 0 0 1 19 7l1 5M4 12l1 5a8 8 0 0 0 14.1 3',
+    play:'M8 5v14l11-7z'
+   };
+   if(iconPaths[iconName]){
     const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
     icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-    path.setAttribute('d','M20 7v5h-5M4 17v-5h5m-4.1-3A8 8 0 0 1 19 7l1 5M4 12l1 5a8 8 0 0 0 14.1 3');
+    path.setAttribute('d',iconPaths[iconName]);
     icon.append(path);button.append(icon);
    }
    button.append(document.createTextNode(text));
@@ -269,7 +273,7 @@
    transaction.objectStore(STORE).delete(id);await transactionDone(transaction);
    window.dispatchEvent(new CustomEvent('library-updated'));
   }
-  async function openRecord(record){
+  async function getRecordFile(record){
    let file=record.blob;
    if(!file&&record.handleRef){
     let permission=await record.handleRef.queryPermission({mode:'read'});
@@ -278,7 +282,24 @@
     file=await record.handleRef.getFile();
    }
    if(!file)throw new Error('The local data for '+record.name+' is no longer available.');
-   return openFile(new File([file],record.name,{type:record.type,lastModified:record.addedAt}),record);
+   return new File([file],record.name,{type:record.type,lastModified:record.addedAt});
+  }
+  async function openRecord(record,systemOverride=''){
+   return openFile(await getRecordFile(record),record,systemOverride);
+  }
+  async function openFolderRecord(path){
+   if(ready)await ready;
+   const folderPath=normalizePath(path),prefix=folderPath.toLowerCase()+'/',folderName=folderPath.split('/').pop();
+   const records=(await getAllRecords())
+    .filter(record=>!record.superseded&&record.normalizedPath.startsWith(prefix))
+    .sort((a,b)=>a.path.localeCompare(b.path));
+   if(!records.length)throw new Error('No stored files were found in '+folderPath+'.');
+   const files=[],paths=[];
+   for(const record of records){
+    files.push(await getRecordFile(record));
+    paths.push(folderName+'/'+record.path.slice(folderPath.length+1));
+   }
+   return openFolder(files,paths);
   }
   function renderLibrary(records){
    const search=$('library-search').value.trim().toLocaleLowerCase();
@@ -316,6 +337,9 @@
     details.append(title,meta,source);
     const actions=document.createElement('div');actions.className='lp-game-card-actions';
     actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
+    if(['exe','com','bat'].includes(extOf(record.name))){
+     actions.append(makeButton('Try DOS','Try running '+record.name+' as a DOS program',()=>openRecord(record,'dos').catch(error=>msg('Could not run '+record.name+' as DOS: '+error.message,false,'error'))));
+    }
     actions.append(makeButton('Controls','Configure controls for '+record.name,()=>window.__retrotitlesOpenControls?.(record)));
     row.append(details,actions);target.append(row);
    }
@@ -345,6 +369,9 @@
    }
    const actions=document.createElement('span');actions.className='lp-library-actions';
    actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
+   if(['exe','com','bat'].includes(extOf(record.name))){
+    actions.append(makeButton('Try DOS','Try running '+record.name+' as a DOS program',()=>openRecord(record,'dos').catch(error=>msg('Could not run '+record.name+' as DOS: '+error.message,false,'error'))));
+   }
    if(record.blob){
     actions.append(makeButton('Download','Download '+record.name,()=>{
      const url=URL.createObjectURL(record.blob),link=document.createElement('a');link.href=url;link.download=record.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -408,7 +435,7 @@
    const renderNode=(node,depth=0,prefix='')=>{
     const children=[];
     for(const folder of [...node.folders.values()].sort((a,b)=>a.name.localeCompare(b.name))){
-     const item=document.createElement('li');item.className='lp-path-item';
+     const item=document.createElement('li');item.className='lp-path-item lp-folder-item';
      const details=document.createElement('details');details.className='lp-path-group';details.open=expandFolders;
      const summary=document.createElement('summary');
      summary.dataset.folderPath=prefix+folder.name;
@@ -423,7 +450,10 @@
      summary.append(icon,name,count);
      const nested=document.createElement('ul');nested.className='lp-path-children';
      nested.append(...renderNode(folder,depth+1,prefix+folder.name+'/'));
-     details.append(summary,nested);item.append(details);children.push(item);
+     details.append(summary,nested);
+     const play=makeButton('Play','Play folder '+folder.name,()=>openFolderRecord(summary.dataset.folderPath).catch(error=>msg('Could not play folder: '+error.message,false,'error')),'play');
+     play.classList.add('lp-folder-play');
+     item.append(details,play);children.push(item);
     }
     node.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(record=>children.push(fileRow(record,parentNames)));
     return children;
