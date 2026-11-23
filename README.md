@@ -14,8 +14,8 @@ retrotitles is a browser-based launcher for running personal title files and sma
 - Check RPG Maker MV/MZ browser exports for their required start page, system data, and core script before streaming. File reads and ZIP embedding show progress and can be canceled; large titles may still exceed browser memory.
 - Add configurable touch controls, restart, use fullscreen, and export supported titles as a standalone HTML file.
 - Use EmulatorJS's built-in keyboard, gamepad, and touch controls for emulated systems; other titles can show on-screen controls on touch devices. Choose supported EmulatorJS shader presets (bicubic, SABR, or ScaleHQ) for compatible cores.
-- Store arbitrary files in the browser file manager to reopen supported titles, download files, or remove them. Files remain in local browser storage; emulator save states have their own manager.
-- Save local file handles to a title library and reopen them after granting browser permission.
+- Keep files added from the picker, folders, ZIP/RAR archives, file handles, and drag-and-drop in one IndexedDB-backed file manager. Archive contents join the same path-based list, and duplicate paths are de-duplicated.
+- Reopen supported titles, download stored files, search and filter the unified list, rebuild its index, or clear the runtime cache from the file manager settings. All game files remain in local browser storage; emulator save states have their own manager.
 - Use browser gamepads and the embedded emulator menu for controller mapping and save states where supported by that core. The launcher lists browser-stored EmulatorJS states and can save, load, import, download, or remove them. Browser storage can be cleared; download important saves as backups.
 - Keep the page structure and styles in `index.html` and `launcher.css`. Launcher behavior is split across `launcher.js`, `compatibility.js`, and `save-manager.js`; bundled runtime/vendor code remains separate.
 - Use the full locally hosted emulator runtimes for offline playback; this workspace has the EmulatorJS 4.2.3, Ruffle 0.7.1, Pyodide 0.26.4, and JSZip 3.10.1 assets installed under the ignored `runtime/` directory.
@@ -32,7 +32,9 @@ retrotitles is a browser-based launcher for running personal title files and sma
 
 ## Run Locally
 
-Serve this directory from `localhost` to enable folder and large-file streaming. The PSP core also requires cross-origin isolation; use a server that applies the headers in `_headers` (such as Wrangler), or configure equivalent COOP/COEP headers on your server. Opening `index.html` directly does not provide these headers.
+Serve this directory from `localhost` to enable folder and large-file streaming. PSP and DOS cores that require threads need cross-origin isolation; `_headers` configures COOP/COEP, and runtime resources include a cross-origin resource policy for Cloudflare Pages/Workers deployments. Opening `index.html` directly does not provide these headers. The launcher warns and offers a copyable diagnostic if a thread-requiring system is selected without isolation.
+
+Systems that need firmware are checked before launch. Place the expected BIOS in `runtime/bios/<system>/`: `psx/scph5501.bin`, `segaCD/bios_CD_U.bin`, `segaSaturn/sega_101.bin`, or `3do/panafz10.bin`. The launcher reports the expected filename when it is missing. BIOS files remain local and should only be obtained from sources you are authorized to use.
 
 ## Deploy to Cloudflare Workers
 
@@ -62,6 +64,6 @@ runtime/
 
 Use JSZip 3.10.1, Ruffle 0.7.1, and Pyodide 0.26.4 to match the online defaults. EmulatorJS 4.2.3 is available from its [official releases](https://github.com/EmulatorJS/EmulatorJS/releases); the archive is about 300 MB and expands to roughly 296 MB because it includes many cores. Copy the full `data/` directory, not just `loader.js`. Local runtime mode still requires `localhost` or HTTPS for service-worker streaming, and Python titles that import extra packages need those packages included in the local Pyodide distribution.
 
-Large ROMs are streamed to the emulator in ranges, but each core may still load the game into memory. Actual limits depend on the browser, device memory, core, format, and any required BIOS files; no browser emulator can guarantee support for every game or arbitrary file size.
+Large ROMs are streamed to the emulator in ranges, but each core may still load the game into memory. The file manager stores local copies in IndexedDB and archive extraction may still require substantial temporary memory (especially RAR). Actual limits depend on the browser, device memory, core, format, and BIOS availability; no browser emulator can guarantee support for every game or arbitrary file size.
 
 Browser graphics options are emulator shaders, not AMD FSR or native graphics drivers. Native DLL injection and hardware frame-generation APIs are not available to content running in an iframe. True support for these requires a native game/runtime and compatible hardware.

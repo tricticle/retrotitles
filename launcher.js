@@ -1,5 +1,6 @@
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
 const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts}=window.__retrotitlesCompatibility;
+const EMULATORJS_VERSION='4.2.3';
 let runtimePreference=null;
 try{runtimePreference=localStorage.getItem('retrotitles-local-runtimes');if(runtimePreference!==null)$('local-runtime').checked=runtimePreference==='true'}catch(e){}
 $('runtime-note').hidden=!$('local-runtime').checked;
@@ -35,6 +36,25 @@ const CORES={
  p:'81',z80:'fuse',rzx:'fuse',scl:'fuse',trd:'fuse',wad:'prboom',iwad:'prboom',pwad:'prboom',
  cso:'psp',prx:'psp',elf:'psp',conf:'dos'
 };
+const SYSTEM_CORES={
+ nes:['fceumm','nestopia'],snes:['snes9x'],gb:['gambatte'],gba:['mgba'],n64:['mupen64plus_next','parallel_n64'],
+ nds:['melonds','desmume','desmume2015'],segaMD:['genesis_plus_gx','picodrive'],segaMS:['smsplus','genesis_plus_gx','picodrive'],
+ segaGG:['genesis_plus_gx'],segaCD:['genesis_plus_gx','picodrive'],sega32x:['picodrive'],atari5200:['a5200'],atari2600:['stella2014'],
+ atari7800:['prosystem'],vb:['beetle_vb'],coleco:['gearcoleco'],lynx:['handy'],ngp:['mednafen_ngp'],pce:['mednafen_pce'],
+ ws:['mednafen_wswan'],jaguar:['virtualjaguar'],psx:['pcsx_rearmed','mednafen_psx_hw'],psp:['ppsspp'],segaSaturn:['yabause'],
+ '3do':['opera'],arcade:['fbneo','fbalpha2012_cps1','fbalpha2012_cps2'],mame:['mame2003_plus','mame2003'],amiga:['puae'],
+ c64:['vice_x64sc'],c128:['vice_x128'],pet:['vice_xpet'],plus4:['vice_xplus4'],vic20:['vice_xvic'],dos:['dosbox_pure'],
+ '81':['81'],fuse:['fuse'],cap32:['cap32'],crocods:['crocods'],same_cdi:['same_cdi']
+};
+const BIOS_REQUIREMENTS={
+ psx:{filename:'scph5501.bin',system:'psx'},
+ segaCD:{filename:'bios_CD_U.bin',system:'segaCD'},
+ segaSaturn:{filename:'sega_101.bin',system:'segaSaturn'},
+ '3do':{filename:'panafz10.bin',system:'3do'}
+};
+const SYSTEM_SIZE_LIMITS={psx:700*1024*1024,psp:1800*1024*1024};
+const requiresSharedArrayBuffer=system=>['psp','dos'].includes(String(system).toLowerCase());
+const systemCores=system=>SYSTEM_CORES[system]||[system];
 const runtimeIsLocal=()=>$('local-runtime').checked;
 const LOCAL_RUNTIME_FILES=['jszip.min.js','runtime/ruffle/ruffle.js','runtime/ruffle/172de42e6619eac8f371.wasm','runtime/ruffle/878d548199cddef07035.wasm','runtime/pyodide/pyodide.js','runtime/pyodide/pyodide.asm.js','runtime/pyodide/pyodide.asm.wasm','runtime/pyodide/python_stdlib.zip','runtime/pyodide/pyodide-lock.json','runtime/emulatorjs/data/loader.js','runtime/emulatorjs/data/emulator.min.js','runtime/emulatorjs/data/emulator.min.css','runtime/emulatorjs/data/src/emulator.js','runtime/emulatorjs/data/cores/cores.json','runtime/emulatorjs/data/cores/fceumm-legacy-wasm.data','runtime/emulatorjs/data/cores/ppsspp-thread-wasm.data','runtime/emulatorjs/data/cores/dosbox_pure-thread-wasm.data'];
 if(runtimePreference===null&&window.isSecureContext&&typeof fetch==='function'){
@@ -49,36 +69,132 @@ if(runtimePreference===null&&window.isSecureContext&&typeof fetch==='function'){
 
 const wrapJS=js=>HEAD+'<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;margin:0 auto;max-width:100%}</style></head><body><canvas id="canvas" width="800" height="600"></canvas><script>\n'+esc(js)+'\n<\/script></body></html>';
 
-const swfPage=(source,streamed=false)=>{const local=runtimeIsLocal(),runtime=local?'runtime/ruffle/ruffle.js':'https://unpkg.com/@ruffle-rs/ruffle',failure=local?'Missing local Ruffle runtime at '+runtime:'Could not load Ruffle from the CDN.';return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#c{width:100%;height:100%}</style><script src="'+runtime+'" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.body.textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><div id="c"></div><script>\naddEventListener("load",()=>{const p=RufflePlayer.newest().createPlayer();p.style.cssText="width:100%;height:100%";document.getElementById("c").appendChild(p);p.ruffle().load('+ (streamed?'{url:'+JSON.stringify(source)+'}':'{data:Uint8Array.from(atob('+JSON.stringify(source)+'),c=>c.charCodeAt(0))}') +')});\n<\/script></body></html>'};
+const swfPage=(source,streamed=false)=>{const local=runtimeIsLocal(),runtime=local?'runtime/ruffle/ruffle.js':'https://unpkg.com/@ruffle-rs/ruffle',failure=local?'Missing local Ruffle runtime at '+runtime:'Could not load Ruffle from the CDN.';return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#c{width:100%;height:100%}</style><script src="'+runtime+'" crossorigin="anonymous" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.body.textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><div id="c"></div><script>\naddEventListener("load",()=>{const p=RufflePlayer.newest().createPlayer();p.style.cssText="width:100%;height:100%";document.getElementById("c").appendChild(p);p.ruffle().load('+ (streamed?'{url:'+JSON.stringify(source)+'}':'{data:Uint8Array.from(atob('+JSON.stringify(source)+'),c=>c.charCodeAt(0))}') +')});\n<\/script></body></html>'};
 
 const availableShaders=['disabled','bicubic','sabr','2xScaleHQ.glslp','4xScaleHQ.glslp'];
 let emulatorShader='disabled';
 try{const savedShader=localStorage.getItem('retrotitles-emulator-shader');if(availableShaders.includes(savedShader))emulatorShader=savedShader}catch(e){}
 $('emulator-shader').value=emulatorShader;
 $('emulator-shader').onchange=()=>{emulatorShader=$('emulator-shader').value;try{localStorage.setItem('retrotitles-emulator-shader',emulatorShader)}catch(e){}};
-const romPage=(source,core,n,streamed=false)=>{const local=runtimeIsLocal(),root=local?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/',failure=local?'Missing local EmulatorJS runtime at '+root+'loader.js':'Could not load EmulatorJS from the CDN.';return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#game{width:100%;height:100%}</style></head><body><div id="game"></div><script>\nEJS_player="#game";EJS_core='+JSON.stringify(core)+';EJS_threads='+JSON.stringify(core==='psp')+';EJS_gameName='+JSON.stringify(n)+';EJS_pathtodata='+JSON.stringify(root)+';EJS_startOnLoaded=true;EJS_defaultOptions={shader:'+JSON.stringify(emulatorShader)+'};EJS_gameUrl='+JSON.stringify(streamed?source:'data:application/octet-stream;base64,'+source)+';EJS_ready=function(){parent.postMessage({type:"rt-emulator-ready"},"*")};\n<\/script><script src="'+root+'loader.js" onerror=\'document.getElementById("game").textContent='+JSON.stringify(failure)+'\'><\/script></body></html>'};
+function runtimeAssetUrl(path){return new URL(path+(path.includes('?')?'&':'?')+'v='+EMULATORJS_VERSION,location.href).href}
+async function checkRuntimeAssets(system,cores){
+ const root=runtimeIsLocal()?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/';
+ const common=['loader.js','emulator.min.js','emulator.min.css'];
+ for(const path of common){
+  const url=runtimeAssetUrl(root+path);
+  try{
+   const response=await fetch(url,{method:'HEAD',cache:'no-store'});
+   if(response.status===404){window.__retrotitlesLog?.('error','Runtime asset missing: '+url,'runtime');throw new Error('Runtime asset missing: '+root+path+'. Check that runtime/ was deployed.')}
+  }catch(error){
+   if(error.message.startsWith('Runtime asset missing:'))throw error;
+   window.__retrotitlesLog?.('warn','Could not verify runtime asset '+url+': '+error.message,'runtime');
+  }
+ }
+ const corePaths=cores.map(core=>root+'cores/'+core+(requiresSharedArrayBuffer(system)?'-thread':'')+'-wasm.data');
+ const available=[];
+ for(const path of corePaths){
+  const url=runtimeAssetUrl(path);
+  try{
+   const response=await fetch(url,{method:'HEAD',cache:'no-store'});
+   if(response.ok||response.status!==404)available.push(path.slice((root+'cores/').length).replace(/(?:-thread)?-wasm\.data$/,''));
+   else if(response.status===404)window.__retrotitlesLog?.('error','Runtime asset missing: '+url,'runtime');
+  }catch(error){window.__retrotitlesLog?.('warn','Could not verify runtime asset '+url+': '+error.message,'runtime');available.push(path.slice((root+'cores/').length).replace(/(?:-thread)?-wasm\.data$/,''))}
+ }
+ if(!available.length)throw new Error('Runtime asset missing: '+corePaths[0]+'. Check that runtime/ was deployed.');
+ return available;
+}
+async function findRequiredBios(system){
+ const requirement=BIOS_REQUIREMENTS[system];
+ if(!requirement)return'';
+ const path='runtime/bios/'+requirement.system+'/'+requirement.filename,url=new URL(path,location.href).href;
+ try{
+  const response=await fetch(url,{method:'HEAD',cache:'no-store'});
+  if(response.ok)return path;
+  console.error('Expected BIOS filename:',requirement.filename,'at',url);
+ }catch(error){
+  console.error('Expected BIOS filename:',requirement.filename,'at',url,error);
+ }
+ throw new Error('This system requires a BIOS file. Place it in runtime/bios/'+requirement.system+'/ and reload.');
+}
+function romPage(source,system,n,streamed=false,coreId=system,biosPath=''){
+ const root=runtimeIsLocal()?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/';
+ const failure=runtimeIsLocal()?'Missing local EmulatorJS runtime at '+root+'loader.js':'Could not load EmulatorJS from the CDN.';
+ const shared=requiresSharedArrayBuffer(system);
+ const bustFn=function(version){
+  const bust=url=>{
+   try{
+    const parsed=new URL(url,location.href);
+    if(parsed.pathname.includes('/data/cores/')||/\/data\/(?:loader|emulator\.min)\./.test(parsed.pathname))parsed.searchParams.set('v',version);
+    return parsed.href;
+   }catch(error){return url}
+  };
+  const originalFetch=window.fetch;
+  if(originalFetch)window.fetch=function(input,options){const url=typeof input==='string'?bust(input):input instanceof URL?bust(input.href):input;return originalFetch.call(this,url,options)};
+  const originalOpen=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(method,url){const args=Array.from(arguments);args[1]=bust(url);return originalOpen.apply(this,args)};
+ };
+ const monitorFn=function(runId){
+  const workers=[],originalWorker=window.Worker;
+  if(originalWorker)window.Worker=function(){const worker=new originalWorker(...arguments);workers.push(worker);return worker};
+  window.Worker&&(window.Worker.prototype=originalWorker.prototype);
+  window.__rtCleanup=()=>{
+   workers.forEach(worker=>worker.terminate());
+   if(window.EJS_emulator){window.EJS_emulator.game=null;window.EJS_emulator.config=null;window.EJS_emulator=null}
+  };
+  let failed=false,frames=0;
+  const report=(reason)=>{if(failed)return;failed=true;parent.postMessage({type:'rt-emulator-failed',reason:String(reason||'Emulator could not start.'),core:window.EJS_core,runId},'*')};
+  const frame=()=>{frames++;if(frames===1)parent.postMessage({type:'rt-emulator-frame',runId},'*')};
+  const watch=(prototype,names)=>{
+   if(!prototype)return;
+   names.forEach(name=>{
+    const original=prototype[name];
+    if(typeof original==='function')prototype[name]=function(){frame();return original.apply(this,arguments)};
+   });
+  };
+  [window.WebGLRenderingContext?.prototype,window.WebGL2RenderingContext?.prototype].forEach(prototype=>watch(prototype,['drawArrays','drawElements']));
+  watch(window.CanvasRenderingContext2D?.prototype,['putImageData','drawImage']);
+  window.addEventListener('error',event=>report(event.message||'The emulator reported a loading error.'));
+  window.addEventListener('unhandledrejection',event=>report(event.reason?.message||event.reason||'The emulator failed while loading.'));
+  const started=Date.now();
+  const timer=setInterval(()=>{
+   const error=document.querySelector('.ejs_error_text');
+   if(error){clearInterval(timer);report(error.textContent||'The emulator reported a loading error.');return}
+   if(Date.now()-started>10000&&frames===0){clearInterval(timer);report('No emulator frame was rendered within 10 seconds.')}
+  },500);
+  addEventListener('pagehide',()=>{clearInterval(timer);window.__rtCleanup()});
+ };
+ return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#game{width:100%;height:100%}</style></head><body><div id="game"></div><script>\n('+bustFn.toString()+')('+JSON.stringify(EMULATORJS_VERSION)+');EJS_player="#game";EJS_core='+JSON.stringify(coreId)+';EJS_threads='+JSON.stringify(shared)+'&&window.crossOriginIsolated;EJS_gameName='+JSON.stringify(n)+';EJS_pathtodata='+JSON.stringify(root)+';EJS_startOnLoaded=true;EJS_defaultOptions={shader:'+JSON.stringify(emulatorShader)+'};EJS_gameUrl='+JSON.stringify(streamed?source:'data:application/octet-stream;base64,'+source)+';EJS_biosUrl='+JSON.stringify(biosPath?new URL(biosPath,location.href).href:'')+';EJS_ready=function(){parent.postMessage({type:"rt-emulator-ready",runId:'+loadSequence+'},"*")};('+monitorFn.toString()+')('+loadSequence+');\n<\/script><script src="'+runtimeAssetUrl(root+'loader.js')+'" crossorigin="anonymous" onerror=\'document.getElementById("game").textContent='+JSON.stringify(failure)+';parent.postMessage({type:"rt-emulator-failed",reason:'+JSON.stringify(failure)+',runId:'+loadSequence+'},"*")\'><\/script></body></html>';
+}
+async function prepareRom(source,system,title,streamed,loadId){
+ const biosPath=await findRequiredBios(system),cores=await checkRuntimeAssets(system,systemCores(system));
+ if(loadId!==loadSequence)return'';
+ const selectedCore=cores[0];
+ if(selectedCore!==systemCores(system)[0])msg('Retrying with alternate core…',false,'warn');
+ activeRom={source,system,title,streamed,cores,coreId:selectedCore,biosPath,loadId};
+ return romPage(source,system,title,streamed,selectedCore,biosPath);
+}
 
-const pyPage=code=>{const local=runtimeIsLocal(),runtime=local?'runtime/pyodide/pyodide.js':'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js',failure=local?'Missing local Pyodide runtime at '+runtime:'Could not load Pyodide from the CDN.';return HEAD+'<style>html,body{margin:0;background:#111;color:#ddd;font:13px ui-monospace,monospace}canvas{display:block;margin:0 auto;max-width:100%;background:#000}pre{margin:8px;white-space:pre-wrap}</style><script src="'+runtime+'" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.getElementById("o").textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><canvas id="cv" width="800" height="600"></canvas><pre id="o">Loading Python…\n</pre><script>\nconst CODE='+JSON.stringify(code).replace(/</g,'\\u003c')+';\n(async()=>{const o=document.getElementById("o");const w=t=>o.textContent+=t+"\\n";try{const py=await loadPyodide({stdout:w,stderr:w});py.canvas.setCanvas2D(document.getElementById("cv"));await py.loadPackagesFromImports(CODE);o.textContent="";await py.runPythonAsync(CODE)}catch(e){w(String(e))}})();\n<\/script></body></html>'};
+const pyPage=code=>{const local=runtimeIsLocal(),runtime=local?'runtime/pyodide/pyodide.js':'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js',failure=local?'Missing local Pyodide runtime at '+runtime:'Could not load Pyodide from the CDN.';return HEAD+'<style>html,body{margin:0;background:#111;color:#ddd;font:13px ui-monospace,monospace}canvas{display:block;margin:0 auto;max-width:100%;background:#000}pre{margin:8px;white-space:pre-wrap}</style><script src="'+runtime+'" crossorigin="anonymous" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.getElementById("o").textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><canvas id="cv" width="800" height="600"></canvas><pre id="o">Loading Python…\n</pre><script>\nconst CODE='+JSON.stringify(code).replace(/</g,'\\u003c')+';\n(async()=>{const o=document.getElementById("o");const w=t=>o.textContent+=t+"\\n";try{const py=await loadPyodide({stdout:w,stderr:w});py.canvas.setCanvas2D(document.getElementById("cv"));await py.loadPackagesFromImports(CODE);o.textContent="";await py.runPythonAsync(CODE)}catch(e){w(String(e))}})();\n<\/script></body></html>'};
 
 const norm=p=>{const o=[];p.replace(/\\/g,'/').split('/').forEach(s=>{if(s==='..')o.pop();else if(s&&s!=='.')o.push(s)});return o.join('/')};
 const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',svg:'image/svg+xml',webp:'image/webp',mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',mp4:'video/mp4',webm:'video/webm',wasm:'application/wasm',m4a:'audio/mp4',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',txt:'text/plain',xml:'application/xml',mjs:'text/javascript',js:'text/javascript',json:'application/json',css:'text/css',html:'text/html'};
 const mimeOf=n=>MIME[n.split('.').pop().toLowerCase()]||'application/octet-stream';
 
-async function fromRar(buf,loadId){
- let ex;const files={};
+async function extractRarEntries(buf,loadId){
+ let ex;const entries=[];
  try{
   ex=await window.__createRar({data:new Uint8Array(buf),wasmBinary:Uint8Array.from(atob(window.__RARW),c=>c.charCodeAt(0))});
   const extracted=ex.extract().files;
   for(let i=0;i<extracted.length;i++){
    if(loadId!==loadSequence)throw new DOMException('Load canceled','AbortError');
    const f=extracted[i];
-   if(f.extraction){const u=f.extraction,n=f.fileHeader.name.replace(/\\/g,'/');files[n]={name:n,async:async t=>t==='string'?new TextDecoder().decode(u):t==='base64'?b64(u):u.slice().buffer}}
+   if(f.extraction&&f.fileHeader.name)entries.push({name:f.fileHeader.name.replace(/\\/g,'/'),get:async()=>new Blob([f.extraction])});
    if(i===extracted.length-1||i%25===0){
     msg('Extracting RAR files — '+(i+1)+' of '+extracted.length,true,'info',{done:i+1,total:extracted.length});
     await new Promise(resolve=>setTimeout(resolve,0));
    }}
  }catch(e){if(e.name==='AbortError')throw e;throw new Error(/password/i.test(String(e&&e.message||e))?'This RAR is password protected.':'Could not read this RAR file ('+(e&&e.message||e)+').')}
- return build({files},loadId);
+ return entries;
 }
 let zipScriptPromise;
 async function ensureJSZip(){
@@ -88,6 +204,7 @@ async function ensureJSZip(){
   const src=local?'jszip.min.js':'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
   const timer=setTimeout(()=>{zipScriptPromise=null;script.remove();reject(new Error('ZIP support did not load within 20 seconds. Check the Console tab for details.'))},20000);
   script.src=src;
+  script.crossOrigin='anonymous';
   script.onload=()=>{clearTimeout(timer);if(window.JSZip)resolve();else{zipScriptPromise=null;reject(new Error('The ZIP helper loaded but JSZip was not defined.'))}};
   script.onerror=()=>{clearTimeout(timer);zipScriptPromise=null;reject(new Error(local?'Missing local ZIP runtime at jszip.min.js.':'Could not load JSZip from the CDN.'))};
   document.head.appendChild(script);
@@ -110,7 +227,7 @@ async function build(z,loadId=loadSequence){const names=Object.keys(z.files).fil
   if(names.some(n=>/\.(br|gz)$/i.test(n)))throw new Error('This Unity build is compressed (.br/.gz). Re-export with Compression Format = Disabled, or host it on a server.');
   let out=raw;portable=false;
   const files=names.filter(n=>n.startsWith(base)&&n!==idx).sort((a,b)=>b.length-a.length);
-  for(const n of files){const rel=n.slice(base.length);const blob=new Blob([await z.files[n].async('arraybuffer')],{type:mimeOf(n)});out=out.split(rel).join(URL.createObjectURL(blob))}
+  for(const n of files){const rel=n.slice(base.length);const blob=new Blob([await z.files[n].async('arraybuffer')],{type:mimeOf(n)});out=out.split(rel).join(createGameObjectURL(blob))}
   return out;
  }
  const exactFiles=new Map(names.map(path=>[norm(path),z.files[path]]));
@@ -233,7 +350,7 @@ const addCtl=(h,includeControls=true)=>{
 };
 
 
-let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null,customControlsAvailable=true;
+let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null,customControlsAvailable=true,activeRom=null;
 const hasTouchInput=()=>Boolean(navigator.maxTouchPoints>0||window.matchMedia?.('(pointer: coarse)').matches);
 const canSW=()=>'serviceWorker' in navigator&&window.isSecureContext;
 function withTimeout(promise,milliseconds,message){
@@ -275,6 +392,14 @@ async function readFileBuffer(file,loadId,stage){
  return bytes.buffer;
 }
 const readFileText=async(file,loadId,stage)=>new TextDecoder().decode(await readFileBuffer(file,loadId,stage));
+const gameObjectUrls=new Set();
+function createGameObjectURL(blob){const url=URL.createObjectURL(blob);gameObjectUrls.add(url);return url}
+function cleanupGame(){
+ try{$('fr').contentWindow?.__rtCleanup?.()}catch(error){window.__retrotitlesLog?.('warn','Could not clean up the previous emulator: '+error.message,'runtime')}
+ gameObjectUrls.forEach(url=>URL.revokeObjectURL(url));gameObjectUrls.clear();
+ activeRom=null;streamUrl=null;provider=null;providerId=null;
+ $('fr').removeAttribute('srcdoc');$('fr').src='about:blank';$('stage').style.display='none';$('save-manager').hidden=true;
+}
 function cancelCurrentLoad(){
  if($('load-cancel').hidden)return;
  loadSequence++;
@@ -283,87 +408,19 @@ function cancelCurrentLoad(){
  msg('Load canceled. Choose the file again to retry.');
 }
 function setLoadedTitle(title,size=''){$('title-name').textContent=title||'Local title';$('title-size').textContent=size}
-const LIBRARY_DB='retrotitles-library';
-let libraryDbPromise;
-const canUseLibrary=()=>Boolean(window.showOpenFilePicker&&window.indexedDB);
-function openLibraryDb(){
- if(!libraryDbPromise)libraryDbPromise=new Promise((resolve,reject)=>{
-  const request=window.indexedDB.open(LIBRARY_DB,1);
-  request.onupgradeneeded=()=>request.result.createObjectStore('titles',{keyPath:'id'});
-  request.onsuccess=()=>resolve(request.result);
-  request.onerror=()=>reject(request.error);
- });
- return libraryDbPromise;
-}
-async function getLibraryEntries(){
- const db=await openLibraryDb();
- return new Promise((resolve,reject)=>{
-  const request=db.transaction('titles','readonly').objectStore('titles').getAll();
-  request.onsuccess=()=>resolve(request.result.sort((a,b)=>a.name.localeCompare(b.name)));
-  request.onerror=()=>reject(request.error);
- });
-}
-async function storeLibraryHandle(handle){
- const entries=await getLibraryEntries();
- let existing;
- for(const entry of entries){if(await entry.handle.isSameEntry(handle)){existing=entry;break}}
- const record={id:existing?.id||crypto.randomUUID(),name:handle.name,handle,addedAt:existing?.addedAt||Date.now()};
- const db=await openLibraryDb();
- await new Promise((resolve,reject)=>{
-  const request=db.transaction('titles','readwrite').objectStore('titles').put(record);
-  request.onsuccess=resolve;request.onerror=()=>reject(request.error);
- });
- try{await navigator.storage?.persist?.()}catch(e){}
-}
-async function deleteLibraryEntry(id){
- const db=await openLibraryDb();
- await new Promise((resolve,reject)=>{
-  const request=db.transaction('titles','readwrite').objectStore('titles').delete(id);
-  request.onsuccess=resolve;request.onerror=()=>reject(request.error);
- });
- await renderLibrary();
-}
-async function openLibraryEntry(entry){
- try{
-  let permission=await entry.handle.queryPermission({mode:'read'});
-  if(permission!=='granted')permission=await entry.handle.requestPermission({mode:'read'});
-  if(permission!=='granted')throw new Error('Read access was not granted.');
-  const file=await entry.handle.getFile();
-  msg('Opening '+entry.name+'…');
-  await load(file);
-  }catch(error){msg('Could not reopen '+entry.name+': '+error.message,false,'error')}
-}
-async function renderLibrary(){
- if(!canUseLibrary())return;
- const list=$('library-list');list.replaceChildren();
- const entries=await getLibraryEntries();
- $('library-empty').hidden=entries.length>0;
- for(const entry of entries){
-  const row=document.createElement('li');row.className='lp-library-row';
-  const title=document.createElement('span');title.className='lp-library-name';title.textContent=entry.name;
-  const actions=document.createElement('span');actions.className='lp-library-actions';
-  const open=document.createElement('button');open.type='button';open.className='lp-button';open.textContent='Open';open.onclick=()=>openLibraryEntry(entry);
-  const remove=document.createElement('button');remove.type='button';remove.className='lp-button';remove.textContent='Remove';remove.setAttribute('aria-label','Remove '+entry.name+' from library');remove.onclick=()=>deleteLibraryEntry(entry.id).catch(error=>msg(error.message,false,'error'));
-  actions.append(open,remove);row.append(title,actions);list.append(row);
- }
-}
-async function addLibraryTitle(){
- try{
-  const [handle]=await window.showOpenFilePicker({multiple:false});
-  const file=await handle.getFile();
-  await storeLibraryHandle(handle);
-  await renderLibrary();
-  msg('Added '+handle.name+' to your library.');
-  await load(file);
-  }catch(error){if(error.name!=='AbortError')msg('Could not add title: '+error.message,false,'error')}
-}
-if(canUseLibrary()){
- $('library').hidden=false;
- $('library-add').onclick=addLibraryTitle;
- renderLibrary().catch(error=>msg('Could not load title library: '+error.message,false,'error'));
-}
 window.__retrotitlesSaveManager({$,msg,sizeLabel,getTitleName:()=>name});
-window.__retrotitlesFileManager({$,msg,sizeLabel,openFile:file=>load(file)});
+window.__retrotitlesFileManager({
+ $,msg,sizeLabel,openFile:file=>load(file,{ingested:true}),
+ extractArchive:async file=>{
+  const extension=file.name.split('.').pop().toLowerCase();
+  if(extension==='zip')return zipEntries(file);
+  if(extension==='rar'){
+   if(file.size>=STREAM_THRESHOLD&&!window.confirm('RAR extraction needs the whole archive in browser memory and may exhaust this device. Continue extracting it into the unified file view?'))return[];
+   return extractRarEntries(await readFileBuffer(file,loadSequence,'Reading RAR archive'),loadSequence);
+  }
+  return[];
+ }
+});
 async function streamLocalFile(file,loadId=loadSequence){
  if(!canSW())throw new Error('Streaming large local files needs this page opened over HTTPS or localhost.');
  msg('Starting local streaming service…',true);
@@ -454,10 +511,10 @@ function showStream(controls=true,page=''){
  $('fr').setAttribute('sandbox','allow-scripts allow-same-origin allow-pointer-lock allow-forms allow-modals');
  $('stage').style.display='block';play();
 }
-async function loadFolder(files){
- if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=++loadSequence,folderName=(files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';streamUrl=null;customControlsAvailable=true;name=folderName;$('stage').style.display='none';resetTouchControls();setLoadedTitle(name,files.length+' local files');$('save-manager').hidden=true;msg('Checking '+files.length+' folder files…',true);
+async function loadFolder(files,paths=[],requestedLoadId=0){
+ if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=requestedLoadId||++loadSequence;if(loadId!==loadSequence)return;const folderName=(paths[0]||files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';cleanupGame();customControlsAvailable=true;name=folderName;resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Checking '+files.length+' folder files…',true);
  try{
-   const entries=files.map(f=>({name:f.webkitRelativePath||f.name,get:async()=>f}));
+   const entries=files.map((f,index)=>({name:paths[index]||f.webkitRelativePath||f.name,get:async()=>f}));
    const names=entries.map(entry=>entry.name);
    if(isDesktopRpgMaker(names))throw new Error('This is a desktop RPG Maker folder. Load an MV/MZ browser export containing index.html, data/System.json, and its js core files instead.');
    const rpgProject=inspectRpgMaker(names);
@@ -526,17 +583,52 @@ document.addEventListener('fullscreenchange',syncFullscreenControls);
 document.addEventListener('webkitfullscreenchange',syncFullscreenControls);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&softFullscreen){e.preventDefault();exitFullscreen()}});
 
-async function load(file){
+function showIsolationWarning(system){
+ const button=$('copy-diagnostic');
+ button.hidden=true;button.onclick=null;
+ if(window.crossOriginIsolated||!requiresSharedArrayBuffer(system))return;
+ const diagnostic='System: '+system+'\nURL: '+location.href+'\nHTTPS secure context: '+window.isSecureContext+'\ncrossOriginIsolated: '+Boolean(window.crossOriginIsolated)+'\nSharedArrayBuffer: '+(typeof SharedArrayBuffer==='function')+'\nRequired response headers: Cross-Origin-Opener-Policy: same-origin; Cross-Origin-Embedder-Policy: require-corp';
+ msg('Warning: '+system+' needs SharedArrayBuffer. Use HTTPS with COOP/COEP headers; launch will continue, but the core may not start.',false,'warn');
+ button.hidden=false;
+ button.onclick=async()=>{
+  try{await navigator.clipboard.writeText(diagnostic);msg('Copied the cross-origin isolation diagnostic.')}
+  catch(error){window.__retrotitlesLog?.('warn','Could not copy the isolation diagnostic: '+error.message,'runtime');msg('Copy was blocked. Open Console for the diagnostic details.',false,'warn')}
+ };
+ window.__retrotitlesLog?.('warn',diagnostic,'runtime');
+}
+async function openArchiveGame(entries,selectedCore,loadId){
+ const games=entries.filter(entry=>{
+  const extension=entry.name.split('.').pop().toLowerCase();
+  return selectedCore?CORES[extension]===selectedCore||['bin','cue','chd','iso'].includes(extension):Boolean(CORES[extension]);
+ });
+ if(!games.length)return false;
+ if(games.length>1){
+  msg('Archive contains multiple game files. Choose one from the unified file manager or select a system manually.',false,'warn');
+  $('core-select').focus();
+  return true;
+ }
+ if(loadId!==loadSequence)return true;
+ const entry=games[0],blob=await entry.get(),gameFile=new File([blob],entry.name.split('/').pop(),{type:blob.type||'application/octet-stream'});
+ await load(gameFile,{ingested:true});
+ return true;
+}
+async function load(file,{ingested=false,source='picker'}={}){
  if(!file)return;
- if(activeReader)activeReader.cancel().catch(()=>{});
- const loadId=++loadSequence,ext=file.name.split('.').pop().toLowerCase();
+ const ext=file.name.split('.').pop().toLowerCase(),selectedCore=$('core-select').value||CORES[ext];
  const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
- const selectedCore=$('core-select').value||CORES[ext],archiveZip=ext==='zip'&&!selectedCore;
+ const archiveZip=ext==='zip'&&!selectedCore;
+ const memoryLimit=(navigator.deviceMemory||4)*128*1024*1024,memoryWarning=file.size>Math.min(SYSTEM_SIZE_LIMITS[selectedCore]||512*1024*1024,memoryLimit);
+ if(memoryWarning&&!window.confirm('This '+(selectedCore||titleName)+' file is '+sizeLabel(file.size)+'. It may exceed available browser memory, especially on mobile or low-memory devices. Continue?'))return;
+ if(activeReader)activeReader.cancel().catch(()=>{});
+ const loadId=++loadSequence;
+ if(!ingested)await window.__retrotitlesIngestFiles([file],{source});
+ if(loadId!==loadSequence)return;
  customControlsAvailable=!selectedCore;
  const titleType=selectedCore?'EmulatorJS '+selectedCore+' title':({zip:'ZIP archive',rar:'RAR archive',html:'HTML title',htm:'HTML title',js:'JavaScript title',py:'Python title',swf:'Flash title',rpgmvp:'RPG Maker asset',rpgmvo:'RPG Maker asset',rpgmvm:'RPG Maker asset',rpgm:'RPG Maker asset',exe:'Desktop package',rgssad:'Desktop RPG Maker package',rgss3a:'Desktop RPG Maker package'})[ext]||'local file';
- const memoryLimit=(navigator.deviceMemory||4)*128*1024*1024,memoryWarning=file.size>Math.min(512*1024*1024,memoryLimit);
  const readStage=stage=>memoryWarning?stage+' (large file; browser memory may be limited)':stage;
  if(memoryWarning)window.__retrotitlesLog?.('warn','Large local file ('+sizeLabel(file.size)+'). Browser memory may be limited; streaming is preferable where supported.','app');
+ cleanupGame();
+ $('copy-diagnostic').hidden=true;
  $('runtime-help').hidden=!Boolean(selectedCore);$('save-manager').hidden=!Boolean(selectedCore&&window.indexedDB);
  $('stage').style.display='none';resetTouchControls();name=titleName;setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Compatibility check — '+titleType+': '+file.name,true);
  try{
@@ -560,12 +652,23 @@ async function load(file){
      msg('Compatible '+rpgProject.name+' export. Streaming '+file.name+'; project files load on demand.');
      showStream();return;
     }
+    if(!findStreamIndex(entries.map(entry=>entry.name))&&await openArchiveGame(entries,selectedCore,loadId))return;
+    if(selectedCore){
+     const streamIndex=findStreamIndex(entries.map(entry=>entry.name));
+     if(streamIndex&&canSW()){
+      const streamed=await streamFrom(entries,loadId,streamIndex);
+      if(streamed&&loadId===loadSequence){msg('Streaming browser title from '+file.name+'.');showStream();return}
+     }
+     msg('No supported '+selectedCore+' game was found in this archive. Its files are available in the unified file view.',false,'warn');
+     return;
+    }
    }
    if(archiveZip){
     if(!entries)entries=await zipEntries(file);
     if(loadId!==loadSequence)return;
    const engine=engineWebExport(entries);
    const streamIndex=engine?.index||findStreamIndex(entries.map(entry=>entry.name));
+   if(!streamIndex){msg('ZIP contents were added to the unified file view. Choose a supported game file there.',false,'warn');return}
    const moduleBuild=await zipRequiresStreaming(entries,streamIndex);
    if(loadId!==loadSequence)return;
    if(engine||moduleBuild){
@@ -578,8 +681,8 @@ async function load(file){
   }
   if(selectedCore&&file.size>=STREAM_THRESHOLD){
    if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
-   html=addCtl(romPage(streamUrl,selectedCore,titleName,true),false);portable=false;
-   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showStream(false,html);return;
+   html=addCtl(await prepareRom(streamUrl,selectedCore,titleName,true,loadId),false);if(loadId!==loadSequence)return;portable=false;
+   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showIsolationWarning(selectedCore);showStream(false,html);return;
   }
   if(ext==='swf'&&file.size>=STREAM_THRESHOLD){
    if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
@@ -600,30 +703,114 @@ async function load(file){
    if(streamed){msg('Streaming '+file.name+'. Files are unpacked only when the title asks for them.');showStream();return;}
   }
   if(archiveZip){loadedHtml=await fromZip(await readFileBuffer(file,loadId,readStage('Reading ZIP archive')),loadId);open=!portable;}
-  else if(ext==='rar'){loadedHtml=await fromRar(await readFileBuffer(file,loadId,readStage('Reading RAR archive')),loadId);open=!portable;}
+  else if(ext==='rar'){
+   const archiveBuffer=await readFileBuffer(file,loadId,readStage('Reading RAR archive')),rarEntries=await extractRarEntries(archiveBuffer,loadId);
+   if(await openArchiveGame(rarEntries,selectedCore,loadId))return;
+   if(!findStreamIndex(rarEntries.map(entry=>entry.name))){msg('RAR contents were added to the unified file view. Choose a supported game file there.',false,'warn');return}
+   const rarFiles={};
+   for(const entry of rarEntries){const blob=await entry.get(),bytes=new Uint8Array(await blob.arrayBuffer());rarFiles[entry.name]={name:entry.name,async:type=>type==='string'?new TextDecoder().decode(bytes):type==='base64'?b64(bytes):bytes.slice().buffer}}
+   loadedHtml=await build({files:rarFiles},loadId);open=!portable;
+  }
   else if(ext==='js')loadedHtml=wrapJS(await readFileText(file,loadId,readStage('Reading JavaScript title')));
   else if(ext==='html'||ext==='htm')loadedHtml=await readFileText(file,loadId,readStage('Reading HTML title'));
   else if(ext==='swf')loadedHtml=swfPage(b64(await readFileBuffer(file,loadId,readStage('Reading SWF title'))));
   else if(ext==='py'){loadedHtml=pyPage(await readFileText(file,loadId,readStage('Reading Python title')));open=true;}
    else if(['rpgmvp','rpgmvo','rpgmvm','rpgm'].includes(ext))throw new Error('This is a single RPG Maker asset, not a complete project. Open the exported MV/MZ folder or ZIP containing index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js.');
    else if(['exe','rgss3a','rgssad'].includes(ext))throw new Error('This is a desktop RPG Maker package. Desktop .exe and RGSS builds cannot run in this browser launcher; use an RPG Maker MV/MZ browser export folder or ZIP instead.');
-  else if(selectedCore){loadedHtml=romPage(b64(await readFileBuffer(file,loadId,readStage('Reading emulator title'))),selectedCore,titleName);open=true;}
+  else if(selectedCore){loadedHtml=await prepareRom(b64(await readFileBuffer(file,loadId,readStage('Reading emulator title'))),selectedCore,titleName,false,loadId);open=true;}
   else throw new Error('Unsupported file type: .'+ext);
   if(loadId!==loadSequence)return;
   html=loadedHtml;
   if(ctl)html=addCtl(html,!selectedCore);$('ctl').hidden=!customControlsAvailable;
   msg('Ready: '+titleType+' — '+file.name+(portable?'':' (This build can\u2019t be exported as a single file; host the original folder instead)'));
+  if(selectedCore)showIsolationWarning(selectedCore);
   show(open);
  }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
 }
 $('drop').onclick=e=>{if(e.target!==$('f'))$('f').click()};
-$('f').onchange=e=>{const file=e.target.files[0];e.target.value='';load(file)};
+async function ingestAndLoad(file,source){
+ try{
+  await load(file,{source});
+ }catch(error){msg('Could not add or open '+file.name+': '+error.message,false,'error')}
+}
+$('f').onchange=e=>{const file=e.target.files[0];e.target.value='';if(file)ingestAndLoad(file,'picker')};
 $('fb').onclick=()=>$('fd').click();
-$('fd').onchange=e=>{const files=[...e.target.files];e.target.value='';loadFolder(files)};
+$('fd').onchange=e=>{
+ const files=Array.from(e.target.files),paths=files.map(file=>file.webkitRelativePath||file.name);e.target.value='';
+ if(!files.length)return;
+ const loadId=++loadSequence;
+ window.__retrotitlesIngestFiles(files,{source:'folder'}).then(()=>{if(loadId===loadSequence)loadFolder(files,paths,loadId)}).catch(error=>msg('Could not add folder files: '+error.message,false,'error'));
+};
+async function filesFromDrop(dataTransfer){
+ const files=[];
+ const collectHandle=async(handle,prefix='')=>{
+  if(handle.kind==='file'){const file=await handle.getFile();files.push({file,path:prefix+file.name});return}
+  for await(const [name,child] of handle.entries())await collectHandle(child,prefix+handle.name+'/');
+ };
+ for(const item of Array.from(dataTransfer.items||[])){
+  if(typeof item.getAsFileSystemHandle==='function'){
+   const handle=await item.getAsFileSystemHandle();if(handle)await collectHandle(handle);continue;
+  }
+  const entry=item.webkitGetAsEntry?.();
+  if(entry){
+   const walk=async(current,prefix='')=>{
+    if(current.isFile){const file=await new Promise((resolve,reject)=>current.file(resolve,reject));files.push({file,path:prefix+current.name});return}
+    if(current.isDirectory){
+     const reader=current.createReader();
+     while(true){const children=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!children.length)break;for(const child of children)await walk(child,prefix+current.name+'/')}
+    }
+   };
+   await walk(entry);continue;
+  }
+  const file=item.getAsFile?.();if(file)files.push({file,path:file.name});
+ }
+ if(files.length)return files;
+ return Array.from(dataTransfer.files||[]).map(file=>({file,path:file.name}));
+}
 $('drop').ondragover=e=>{e.preventDefault();$('drop').classList.add('is-over')};
 $('drop').ondragleave=()=>$('drop').classList.remove('is-over');
-$('drop').ondrop=e=>{e.preventDefault();$('drop').classList.remove('is-over');const files=e.dataTransfer.files;if(files.length!==1){msg(files.length?'Drop one title file at a time.':'No file was found in that drop.');return}load(files[0])};
+$('drop').ondrop=async e=>{
+ e.preventDefault();$('drop').classList.remove('is-over');
+ try{
+  const items=await filesFromDrop(e.dataTransfer),files=items.map(item=>item.file),paths=items.map(item=>item.path);
+  if(!files.length){msg('No files were found in that drop.');return}
+  if(files.length>1){
+   if(paths.some(path=>path.includes('/'))){
+    const loadId=++loadSequence;
+    await window.__retrotitlesIngestFiles(items,{source:'drag-drop'});
+    if(loadId===loadSequence)await loadFolder(files,paths,loadId);
+   }else{
+    await window.__retrotitlesIngestFiles(items,{source:'drag-drop'});
+    msg('Added '+files.length+' files to the unified file view.');
+   }
+   return;
+  }
+  const file=files[0];
+  if(paths[0]&&paths[0].includes('/')){
+   const loadId=++loadSequence;
+   await window.__retrotitlesIngestFiles(items,{source:'drag-drop'});
+   if(loadId===loadSequence)await loadFolder(files,paths,loadId);
+  }
+  else await load(file,{source:'drag-drop'});
+ }catch(error){msg('Could not add dropped files: '+error.message,false,'error')}
+};
+window.addEventListener('message',event=>{
+ if(event.source!==$('fr').contentWindow||event.data?.type!=='rt-emulator-failed'||!activeRom||event.data.runId!==activeRom.loadId)return;
+ const current=activeRom.cores.indexOf(activeRom.coreId),alternate=activeRom.cores[current+1];
+ if(alternate){
+  msg('Retrying with alternate core…',false,'warn');
+  activeRom.coreId=alternate;
+  const page=romPage(activeRom.source,activeRom.system,activeRom.title,activeRom.streamed,alternate,activeRom.biosPath);
+  html=activeRom.streamed?addCtl(page,false):page;
+  if(activeRom.streamed)showStream(false,html);else show(true);
+  return;
+ }
+ const failure='This file may be corrupted or for a different system. Try selecting the system manually. It may also be a bad dump, missing BIOS, or unsupported format.';
+ window.__retrotitlesLog?.('error','All available cores failed for '+activeRom.system+': '+(event.data.reason||'Unknown emulator error'),'runtime');
+ msg(failure,false,'error');$('core-select').focus();
+});
 $('run').onclick=play;
+$('close-game').onclick=()=>{cleanupGame();resetTouchControls();$('title-name').textContent='Local title';$('title-size').textContent='';msg('Closed the current title.')};
 $('load-cancel').onclick=cancelCurrentLoad;
 $('ctl').onclick=()=>{setTouchControlsActive(!touchControlsOn);try{$('fr').contentWindow.postMessage('gr-toggle','*')}catch(e){}};
 $('fs').onclick=toggleFullscreen;

@@ -439,6 +439,7 @@ html, body { margin: 0; min-height: 100%; }
           font-size: 11px; font-weight: 700; cursor: pointer;
         }
         .lp-load-cancel:hover { border-color: var(--lp-ink-soft); }
+        #copy-diagnostic[hidden] { display: none; }
         .lp-message[aria-busy="true"]::before {
           display: inline-block;
           width: 11px;
@@ -470,6 +471,16 @@ html, body { margin: 0; min-height: 100%; }
         .lp-file-actions .lp-button { min-height: 32px; }
         .lp-file-manager .lp-library-empty { margin-top: 8px; }
         .lp-file-name { min-width: 0; overflow-wrap: anywhere; color: #34574f; font-size: 13px; font-weight: 650; }
+        .lp-file-filters { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+        .lp-file-filters input, .lp-file-filters select {
+          min-height: 34px; min-width: 130px; max-width: 100%; padding: 0 9px;
+          border: 1px solid #d6dbce; border-radius: 7px; background: #fbfaf5;
+          color: #34574f; font-size: 12px;
+        }
+        .lp-file-filters input { flex: 1 1 180px; }
+        .lp-file-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid #e1e4dc; }
+        .lp-file-settings .lp-aside-label { margin-right: 5px; }
+        .lp-file-row .lp-file-name { flex: 1 1 auto; }
         .lp-save-manager { margin-top: 20px; padding: 16px 3px 0; border-top: 1px solid rgba(22, 60, 54, .12); }
         .lp-save-manager[hidden] { display: none; }
         .lp-save-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -485,6 +496,9 @@ html, body { margin: 0; min-height: 100%; }
         .lp-save-size { display: block; color: var(--lp-muted); font-size: 10px; font-weight: 400; }
         @media (max-width: 480px) {
           .lp-file-actions { flex-wrap: wrap; }
+          .lp-file-filters { display: grid; grid-template-columns: 1fr 1fr; }
+          .lp-file-filters input { grid-column: 1 / -1; }
+          .lp-file-filters select { min-width: 0; width: 100%; }
           .lp-save-heading { align-items: flex-start; flex-direction: column; }
           .lp-save-actions { flex-wrap: wrap; }
           .lp-save-row { align-items: flex-start; flex-direction: column; padding: 10px 0; }

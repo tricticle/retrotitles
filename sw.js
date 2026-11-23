@@ -1,6 +1,12 @@
 // Serves files for the game runner on demand. Keep this file next to the HTML page.
+const RUNTIME_CACHE = 'retrotitles-runtime-v4.2.3';
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', e => e.waitUntil((async () => {
+  const cachesToDelete = (await caches.keys()).filter(name => name.startsWith('retrotitles-runtime-') && name !== RUNTIME_CACHE);
+  await Promise.all(cachesToDelete.map(name => caches.delete(name)));
+  await caches.open(RUNTIME_CACHE);
+  await self.clients.claim();
+})()));
 
 async function ask(streamId, path) {
   const cs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

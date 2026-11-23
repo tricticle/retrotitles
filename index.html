@@ -146,30 +146,34 @@
    <div class="lp-aside-foot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="m9 12 2 2 4-5"/></svg>No upload. Your files stay local.</div>
   </aside>
  </div>
- <section id="library" class="lp-library" aria-labelledby="library-title" hidden>
-  <div class="lp-library-heading">
-   <div><p class="lp-aside-label">Your collection</p><h2 id="library-title">Title library</h2></div>
-   <button id="library-add" class="lp-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg>Add title</button>
-  </div>
-  <p id="library-empty" class="lp-library-empty">Your library is empty. Add a title to reconnect to it here later.</p>
-  <ul id="library-list" class="lp-library-list"></ul>
- </section>
  <section id="file-manager" class="lp-library lp-file-manager" aria-labelledby="file-manager-title" hidden>
   <div class="lp-library-heading">
    <div><p class="lp-aside-label">On this device</p><h2 id="file-manager-title">File manager</h2></div>
-   <div class="lp-file-actions"><button id="file-import-button" class="lp-button" type="button">Upload files</button><button id="file-refresh" class="lp-button" type="button">Refresh</button><input id="file-import" class="lp-hidden-input" type="file" multiple aria-label="Upload files to browser storage"></div>
+   <div class="lp-file-actions"><button id="library-add" class="lp-button" type="button" hidden>Add file handle</button><button id="file-import-button" class="lp-button" type="button">Add files</button><button id="file-refresh" class="lp-button" type="button">Refresh</button><input id="file-import" class="lp-hidden-input" type="file" multiple aria-label="Add files to the unified file view"></div>
   </div>
   <p id="file-manager-status" class="lp-library-empty" aria-live="polite">Files are stored locally in this browser; they are not uploaded to a server.</p>
-  <p id="file-empty" class="lp-library-empty">No files stored yet. Upload files to keep browser-local copies you can download later.</p>
+  <div class="lp-file-filters" aria-label="Filter files">
+   <input id="file-search" type="search" placeholder="Search files…" aria-label="Search files">
+   <select id="file-system-filter" aria-label="Filter by system"><option value="">All systems</option></select>
+   <select id="file-type-filter" aria-label="Filter by file type"><option value="">All types</option></select>
+   <select id="file-source-filter" aria-label="Filter by source"><option value="">All sources</option></select>
+  </div>
+  <p id="file-empty" class="lp-library-empty">No files stored yet. Choose a file, folder, archive, or drop files to add them here.</p>
   <ul id="file-list" class="lp-library-list"></ul>
+  <div class="lp-file-settings" aria-label="File and runtime settings">
+   <span class="lp-aside-label">Settings</span>
+   <button id="file-rebuild" class="lp-button" type="button">Rebuild file index</button>
+   <button id="runtime-cache-clear" class="lp-button" type="button">Clear runtime cache</button>
+  </div>
  </section>
- <div id="msg" class="lp-message" role="status" aria-live="polite" aria-busy="false"><span id="msg-text"></span><progress id="load-progress" class="lp-load-progress" max="100" hidden></progress><button id="load-cancel" class="lp-load-cancel" type="button" hidden>Cancel</button></div>
+ <div id="msg" class="lp-message" role="status" aria-live="polite" aria-busy="false"><span id="msg-text"></span><progress id="load-progress" class="lp-load-progress" max="100" hidden></progress><button id="load-cancel" class="lp-load-cancel" type="button" hidden>Cancel</button><button id="copy-diagnostic" class="lp-button" type="button" hidden>Copy diagnostic</button></div>
  <section id="stage" class="lp-loaded" aria-label="Loaded title player" style="display:none">
   <div class="lp-loaded-heading">
    <div class="lp-current-title"><span class="lp-title-stamp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></span><div class="lp-title-meta"><span class="lp-eyebrow">Loaded locally</span><h2 id="title-name" class="lp-loaded-title">Local title</h2></div></div>
    <span id="title-size" class="lp-size-tag"></span>
   </div>
   <div class="lp-loaded-actions">
+   <button id="close-game" class="lp-button" type="button">Close game</button>
    <button id="run" class="lp-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></svg>Restart</button>
   <button id="fs" class="lp-button" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg><span id="fs-label">Fullscreen</span></button>
    <button id="ctl" class="lp-button" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span id="ctl-label">Add touch controls</span></button>
