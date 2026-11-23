@@ -10,6 +10,38 @@
     request.onblocked=()=>reject(new Error('Browser save storage is blocked by another tab. Close other retrotitles tabs and retry.'));
    });
   }
+  async function clearStoredDatabase(databaseName,storeName){
+   if(!window.indexedDB)return;
+   if(window.indexedDB.databases){
+    const databases=await window.indexedDB.databases();
+    if(!databases.some(database=>database.name===databaseName))return;
+   }
+   await new Promise((resolve,reject)=>{
+    const request=window.indexedDB.open(databaseName);
+    request.onupgradeneeded=()=>{
+     if(!request.result.objectStoreNames.contains(storeName))request.result.createObjectStore(storeName);
+    };
+    request.onsuccess=()=>{
+     const db=request.result;
+     if(!db.objectStoreNames.contains(storeName)){db.close();resolve();return}
+     const transaction=db.transaction(storeName,'readwrite');
+     transaction.objectStore(storeName).clear();
+     transaction.oncomplete=()=>{db.close();resolve()};
+     transaction.onerror=()=>{db.close();reject(transaction.error||new Error('Could not clear '+databaseName+'.'))};
+     transaction.onabort=()=>{db.close();reject(transaction.error||new Error('Clearing '+databaseName+' was interrupted.'))};
+    };
+    request.onerror=()=>reject(request.error||new Error('Could not open '+databaseName+' for cleanup.'));
+    request.onblocked=()=>reject(new Error(databaseName+' is blocked by another tab. Close other RetroTitles tabs and retry.'));
+   });
+  }
+  window.__retrotitlesClearEmulatorStorage=async()=>{
+   for(const [databaseName,storeName] of [
+    ['EmulatorJS-states','states'],
+    ['EmulatorJS-roms','rom'],
+    ['EmulatorJS-bios','bios'],
+    ['EmulatorJS-core','core']
+   ])await clearStoredDatabase(databaseName,storeName);
+  };
   function saveByteLength(value){
    if(value instanceof ArrayBuffer)return value.byteLength;
    if(ArrayBuffer.isView(value))return value.byteLength;

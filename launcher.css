@@ -864,6 +864,8 @@ html, body { margin: 0; min-height: 100%; }
 .lp-settings-content .lp-settings-group h2 { margin-bottom: 8px; }
 .lp-settings-content .lp-setting-row:last-of-type { border-bottom: 0; }
 .lp-settings-content .lp-setting-toggle input:disabled, .lp-settings-content select:disabled { opacity: .55; }
+.lp-game-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.lp-game-settings-dialog input[type="range"] { width: min(260px, 52%); padding: 0; accent-color: var(--lp-ink); }
 
 @media (max-width: 640px) {
   .lp-page { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }

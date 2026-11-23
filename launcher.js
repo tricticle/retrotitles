@@ -139,6 +139,10 @@ function populateShaderOptions(){
   option.replaceChildren(new Option('Use default shader',''),...availableShaders.map(shader=>new Option(shader,shader)));
   option.value=selected;
  });
+ const gameSelect=$('game-shader'),previous=gameSelect.value||'default';
+ gameSelect.replaceChildren(new Option('Use saved default','default'),new Option('No shader','disabled'),...availableShaders.map(shader=>new Option(shader,shader)),new Option('Custom shader key','custom'));
+ gameSelect.value=previous;
+ if(gameSelect.value!==previous)gameSelect.value='default';
 }
 $('emulator-shader').onchange=()=>{
  if($('emulator-shader').value==='custom'){$('custom-shader').focus();return}
@@ -177,7 +181,7 @@ function loadRuntimeShaders(){
   const runtimeShaders=window.EJS_SHADERS&&Object.keys(window.EJS_SHADERS);
   if(runtimeShaders?.length)availableShaders=runtimeShaders;
   else window.__retrotitlesLog?.('warn','EmulatorJS returned no shader definitions; using the bundled shader fallback list.','settings');
-  populateShaderOptions();script.remove();
+  populateShaderOptions();syncGameSettings();script.remove();
  };
  script.onerror=()=>{
   window.__retrotitlesLog?.('warn','Could not load EmulatorJS shader definitions; using the bundled shader fallback list.','settings');
@@ -190,6 +194,7 @@ function shaderForSystem(system){return shaderOverrides[system]||emulatorShader}
 function emulatorOptions(system){
  const options={shader:shaderForSystem(system),vsync:displaySettings.vsync?'enabled':'disabled',fps:displaySettings.performanceOverlay?'show':'hide'};
  if(displaySettings.renderer==='webgl2')options.webgl2Enabled='enabled';
+ if(hasTouchInput())options['virtual-gamepad']=touchControlsEnabled?'enabled':'disabled';
  return options;
 }
 async function checkRuntimeAssets(system,cores){
@@ -427,13 +432,15 @@ const CTRL_FN=function(scope,fallbackScope,configuredMap){
  function vis(v){root.style.display=v?'block':'none';if(!v)end()}
  root.__grToggle=function(){vis(root.style.display==='none')};
  root.__grShow=function(){vis(true)};
+ root.__grHide=function(){vis(false)};
  vis(true);
  }
  addEventListener('message',function(e){
-  if(e.data!=='gr-toggle'&&e.data!=='gr-show')return;
-  if(!window.__grc){createControls();return}
+  if(e.data!=='gr-toggle'&&e.data!=='gr-show'&&e.data!=='gr-hide')return;
+  if(!window.__grc){createControls();if(e.data==='gr-hide')document.getElementById('grc')?.__grHide?.();return}
   var root=document.getElementById('grc');
   if(root&&e.data==='gr-show'&&root.__grShow)root.__grShow();
+  else if(root&&e.data==='gr-hide'&&root.__grHide)root.__grHide();
   else if(root&&root.__grToggle)root.__grToggle();
  });
 };
@@ -478,7 +485,7 @@ const addCtl=(h,includeControls=true,controlScope='default',fallbackScope='defau
 };
 
 
-let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null,customControlsAvailable=true,activeRom=null,activeControlScope='default';
+let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null,customControlsAvailable=true,activeRom=null,activeGameRecord=null,activeControlScope='default';
 const hasTouchInput=()=>Boolean(navigator.maxTouchPoints>0||window.matchMedia?.('(pointer: coarse)').matches);
 const canSW=()=>'serviceWorker' in navigator&&window.isSecureContext;
 function withTimeout(promise,milliseconds,message){
@@ -525,7 +532,7 @@ function createGameObjectURL(blob){const url=URL.createObjectURL(blob);gameObjec
 function cleanupGame(){
  try{$('fr').contentWindow?.__rtCleanup?.()}catch(error){window.__retrotitlesLog?.('warn','Could not clean up the previous emulator: '+error.message,'runtime')}
  gameObjectUrls.forEach(url=>URL.revokeObjectURL(url));gameObjectUrls.clear();
- activeRom=null;streamUrl=null;provider=null;providerId=null;
+ activeRom=null;activeGameRecord=null;streamUrl=null;provider=null;providerId=null;
  $('fr').removeAttribute('srcdoc');$('fr').src='about:blank';$('stage').style.display='none';$('save-manager').hidden=true;$('ctl').hidden=true;syncPlayEmpty();
 }
 function syncPlayEmpty(){$('play-empty').hidden=$('stage').style.display!=='none'}
@@ -546,6 +553,25 @@ if(!controlMappings.default){
 }
 let controlsSystem='default',controlsRecord=null;
 let touchControlsEnabled=readStoredValue('retrotitles-touch-controls','true')!=='false';
+function setTouchControlsPreference(enabled,applyToCurrent=true){
+ touchControlsEnabled=Boolean(enabled);
+ $('touch-controls-toggle').checked=touchControlsEnabled;
+ $('game-touch-controls').checked=touchControlsEnabled;
+ writeStoredValue('retrotitles-touch-controls',String(touchControlsEnabled));
+ if(!applyToCurrent||$('stage').style.display==='none')return;
+ const emulator=activeEmulatorInstance();
+ if(emulator){
+  try{
+   emulator.changeSettingOption('virtual-gamepad',touchControlsEnabled?'enabled':'disabled');
+   emulator.saveSettings?.();
+  }catch(error){msg('Could not update touch controls: '+error.message,false,'error')}
+  return;
+ }
+ if(customControlsAvailable){
+  setTouchControlsActive(touchControlsEnabled);
+  $('fr').contentWindow.postMessage(touchControlsEnabled?'gr-show':'gr-hide','*');
+ }
+}
 function controlScope(){return controlsRecord?'game:'+controlsRecord.id:controlsSystem}
 function renderControllerStatus(){
  const status=$('controller-status'),gamepads=$('gamepad-mapping-list');
@@ -593,8 +619,7 @@ $('controls-system').addEventListener('change',()=>{
 });
 $('touch-controls-toggle').checked=touchControlsEnabled;
 $('touch-controls-toggle').addEventListener('change',()=>{
- touchControlsEnabled=$('touch-controls-toggle').checked;
- writeStoredValue('retrotitles-touch-controls',String(touchControlsEnabled));
+ setTouchControlsPreference($('touch-controls-toggle').checked);
 });
 window.addEventListener('gamepadconnected',renderControllerStatus);
 window.addEventListener('gamepaddisconnected',renderControllerStatus);
@@ -615,6 +640,40 @@ window.__retrotitlesFileManager({
   return[];
  }
 });
+async function clearAllLocalData(){
+ if(!window.confirm('Delete indexed game files and file handles, browser and EmulatorJS saves, settings, and cached runtime data? This cannot be undone. Files on your computer will not be deleted. Close other RetroTitles tabs before continuing.'))return;
+ const button=$('delete-all-data'),status=$('delete-all-status');
+ button.disabled=true;status.textContent='Stopping the current title and clearing local data…';
+ try{
+  if(!$('load-cancel').hidden)cancelCurrentLoad();
+  const frame=$('fr');
+  const unloaded=new Promise(resolve=>{
+   let timer;
+   const finish=()=>{clearTimeout(timer);frame.removeEventListener('load',finish);resolve()};
+   frame.addEventListener('load',finish,{once:true});timer=setTimeout(finish,1500);
+  });
+  cleanupGame();await unloaded;
+  if(typeof window.__retrotitlesClearIndexedFiles!=='function')throw new Error('File storage cleanup is unavailable.');
+  if(typeof window.__retrotitlesClearEmulatorStorage!=='function')throw new Error('Emulator storage cleanup is unavailable.');
+  if(typeof window.__retrotitlesClearRuntimeCache!=='function')throw new Error('Runtime cache cleanup is unavailable.');
+  await window.__retrotitlesClearIndexedFiles();
+  await window.__retrotitlesClearEmulatorStorage();
+  await window.__retrotitlesClearRuntimeCache();
+  const preferenceKeys=[];
+  for(let index=0;index<localStorage.length;index++){
+   const key=localStorage.key(index);
+   if(key&&(key.startsWith('retrotitles-')||key==='gr-keys'||key==='ejs-settings'||/^ejs-.+-settings$/.test(key)))preferenceKeys.push(key);
+  }
+  preferenceKeys.forEach(key=>localStorage.removeItem(key));
+  status.textContent='Local RetroTitles data cleared. Reloading…';
+  location.reload();
+ }catch(error){
+  status.textContent='Could not clear all local data: '+error.message+' Close other RetroTitles tabs and retry.';
+  window.__retrotitlesLog?.('error','Could not clear all local data: '+error.message,'storage');
+ }finally{
+  button.disabled=false;
+ }
+}
 async function streamLocalFile(file,loadId=loadSequence){
  if(!canSW())throw new Error('Streaming large local files needs this page opened over HTTPS or localhost.');
  msg('Starting local streaming service…',true);
@@ -706,7 +765,7 @@ function showStream(controls=true,page=''){
  $('stage').style.display='block';syncPlayEmpty();activateTab('play');play();
 }
 async function loadFolder(files,paths=[],requestedLoadId=0){
- if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=requestedLoadId||++loadSequence;if(loadId!==loadSequence)return;const folderName=(paths[0]||files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';cleanupGame();activeControlScope='default';customControlsAvailable=true;name=folderName;resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Checking '+files.length+' folder files…',true);
+ if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=requestedLoadId||++loadSequence;if(loadId!==loadSequence)return;const folderName=(paths[0]||files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';cleanupGame();activeGameRecord=null;activeControlScope='default';customControlsAvailable=true;name=folderName;resetTouchControls();setLoadedTitle(name,files.length+' local files');msg('Checking '+files.length+' folder files…',true);
  try{
    const entries=files.map((f,index)=>({name:paths[index]||f.webkitRelativePath||f.name,get:async()=>f}));
    const names=entries.map(entry=>entry.name);
@@ -736,12 +795,170 @@ function show(open){
 let touchControlsOn=false;
 function setTouchControlsActive(active){touchControlsOn=active;$('ctl').setAttribute('aria-pressed',String(active));$('ctl').classList.toggle('lp-touch-active',active);$('ctl-label').textContent=active?'Hide screen controls':'Show screen controls'}
 function resetTouchControls(){setTouchControlsActive(false)}
+function activeEmulatorInstance(){
+ if($('stage').style.display==='none')return null;
+ try{
+  const emulator=$('fr').contentWindow?.EJS_emulator;
+  return emulator?.gameManager&&typeof emulator.changeSettingOption==='function'?emulator:null;
+ }catch(error){
+  window.__retrotitlesLog?.('warn','Could not access live emulator settings: '+error.message,'settings');
+  return null;
+ }
+}
+function gameMediaTargets(){
+ try{return Array.from($('fr').contentDocument?.querySelectorAll('audio,video')||[])}
+ catch(error){return[]}
+}
+function syncGameSettings(){
+ const active=$('stage').style.display!=='none',emulator=activeEmulatorInstance(),media=gameMediaTargets(),ready=Boolean(emulator);
+ $('game-settings-status').textContent=!active
+  ?'Open a title to adjust live session settings.'
+  :ready?'Shaders, VSync, FPS, and EmulatorJS volume apply live. Renderer changes require a restart.'
+  :'EmulatorJS graphics settings are unavailable for this title. Audio works for standard media elements; some web titles manage their own sound.';
+ $('game-shader').disabled=!ready||!emulator.config?.shaders;
+ $('game-custom-shader').disabled=$('game-shader').disabled;
+ $('game-renderer').disabled=!ready||!emulator.supportsWebgl2;
+ $('game-vsync').disabled=!ready;$('game-fps').disabled=!ready;
+ $('game-vsync').checked=ready?emulator.getSettingValue?.('vsync')!=='disabled':displaySettings.vsync!==false;
+ $('game-fps').checked=ready?emulator.getSettingValue?.('fps')==='show':Boolean(displaySettings.performanceOverlay);
+ $('game-renderer').value=displaySettings.renderer;
+ if(activeRom){
+  const system=activeRom.system,hasOverride=Object.prototype.hasOwnProperty.call(shaderOverrides,system);
+  const shader=hasOverride?shaderOverrides[system]:'default';
+  $('game-shader').value=Array.from($('game-shader').options).some(option=>option.value===shader)?shader:'custom';
+  $('game-custom-shader').value=$('game-shader').value==='custom'&&shader!=='default'?shader:'';
+ }else{
+  $('game-shader').value='default';$('game-custom-shader').value='';
+ }
+ const mediaAudio=media.length>0,hasAudio=Boolean(ready&&typeof emulator.setVolume==='function')||mediaAudio;
+ $('game-mute').disabled=!active||!hasAudio;$('game-volume').disabled=!active||!hasAudio;
+ if(ready&&typeof emulator.setVolume==='function'){
+  $('game-mute').checked=Boolean(emulator.muted);
+  $('game-volume').value=String(Math.round((Number(emulator.volume)||0)*100));
+ }else if(mediaAudio){
+  $('game-mute').checked=media.every(element=>element.muted);
+  $('game-volume').value=String(Math.round(media[0].volume*100));
+ }else{$('game-mute').checked=false;$('game-volume').value='50'}
+ $('game-audio-note').textContent=ready
+  ?'Volume is applied to EmulatorJS audio and saved with its game settings.'
+  :mediaAudio?'Volume controls apply to this title’s audio/video elements. Web Audio output may be controlled by the title itself.'
+  :'This title does not expose host-adjustable audio controls.';
+ $('game-touch-controls').disabled=!active||(!ready&&!customControlsAvailable);
+ const virtualGamepad=ready?emulator.getSettingValue?.('virtual-gamepad'):null;
+ $('game-touch-controls').checked=ready
+  ?(virtualGamepad===null?touchControlsEnabled:virtualGamepad!=='disabled')
+  :touchControlsOn;
+ $('game-save-now').disabled=$('save-now').disabled;
+ $('game-open-saves').disabled=$('save-manager').hidden;
+}
+function applyGameShader(value){
+ const emulator=activeEmulatorInstance();
+ if(!emulator||!activeRom)throw new Error('Live shaders are available only for a running EmulatorJS title.');
+ const system=activeRom.system;
+ if(value==='default')delete shaderOverrides[system];
+ else shaderOverrides[system]=value;
+ writeStoredValue('retrotitles-shader-overrides',JSON.stringify(shaderOverrides));
+ document.querySelectorAll('[data-system-shader]').forEach(select=>{
+  if(select.dataset.systemShader===system)select.value=shaderOverrides[system]||'';
+ });
+ emulator.changeSettingOption('shader',shaderOverrides[system]||emulatorShader);
+ emulator.saveSettings?.();
+}
+function applyGameAudio(){
+ const volume=Number($('game-volume').value)/100,muted=$('game-mute').checked||volume===0,emulator=activeEmulatorInstance();
+ $('game-mute').checked=muted;
+ try{
+  if(emulator&&typeof emulator.setVolume==='function'){
+   emulator.volume=volume;emulator.muted=muted;emulator.setVolume(muted?0:volume);emulator.saveSettings?.();return;
+  }
+  gameMediaTargets().forEach(element=>{element.volume=volume;element.muted=muted});
+ }catch(error){msg('Could not update game audio: '+error.message,false,'error')}
+}
+function clearEmulatorRendererOverride(emulator){
+ if(typeof emulator.getLocalStorageKey!=='function')return;
+ const key=emulator.getLocalStorageKey();
+ let saved={};
+ try{saved=JSON.parse(localStorage.getItem(key)||'{}')||{}}
+ catch(error){throw new Error('Could not read the current EmulatorJS settings: '+error.message)}
+ if(saved.settings&&typeof saved.settings==='object')delete saved.settings.webgl2Enabled;
+ try{localStorage.setItem(key,JSON.stringify(saved))}
+ catch(error){throw new Error('Could not clear the saved WebGL2 override: '+error.message)}
+ if(emulator.settings)delete emulator.settings.webgl2Enabled;
+ if(emulator.allSettings)delete emulator.allSettings.webgl2Enabled;
+ emulator.saveSettings?.();
+}
+function updateGameRenderer(value){
+ displaySettings.renderer=value;persistDisplaySettings();
+ const emulator=activeEmulatorInstance();
+ if(!emulator)return;
+ if(value==='auto')clearEmulatorRendererOverride(emulator);
+ else{
+  emulator.changeSettingOption('webgl2Enabled',value==='webgl2'?'enabled':'disabled');
+  emulator.saveSettings?.();
+ }
+ $('game-settings-status').textContent='Renderer preference saved. Restart the title to apply it.';
+}
+function restartCurrentGame(){
+ if(!activeRom){play();return}
+ const game=activeRom,loadId=++loadSequence;game.loadId=loadId;
+ const page=romPage(game.source,game.system,game.title,game.streamed,game.coreId,game.biosPath);
+ html=game.streamed?addCtl(page,false):page;
+ play();
+}
 function play(){
  resetTouchControls();
  const f=$('fr');
- f.onload=()=>{if(touchControlsEnabled&&customControlsAvailable&&hasTouchInput()){setTouchControlsActive(true);f.contentWindow.postMessage('gr-show','*')}};
+ f.onload=()=>{
+  if(customControlsAvailable){
+   const showControls=touchControlsEnabled&&hasTouchInput();
+   setTouchControlsActive(showControls);f.contentWindow.postMessage(showControls?'gr-show':'gr-hide','*');
+  }
+  syncGameSettings();
+ };
  if(streamUrl&&!html){f.removeAttribute('srcdoc');f.src='about:blank';setTimeout(()=>f.src=streamUrl,60)}else{f.removeAttribute('src');f.srcdoc=html}
 }
+$('game-settings-open').addEventListener('click',()=>{syncGameSettings();$('game-settings-dialog').showModal()});
+$('game-shader').addEventListener('change',()=>{
+ if($('game-shader').value==='custom'){$('game-custom-shader').focus();return}
+ try{applyGameShader($('game-shader').value)}catch(error){msg('Could not apply the game shader: '+error.message,false,'error')}
+});
+$('game-custom-shader').addEventListener('change',()=>{
+ const shader=$('game-custom-shader').value.trim();
+ try{applyGameShader(shader||'default')}catch(error){msg('Could not apply the game shader: '+error.message,false,'error')}
+});
+$('game-vsync').addEventListener('change',()=>{
+ displaySettings.vsync=$('game-vsync').checked;persistDisplaySettings();$('vsync-setting').checked=displaySettings.vsync;
+ try{activeEmulatorInstance()?.changeSettingOption('vsync',displaySettings.vsync?'enabled':'disabled')}catch(error){msg('Could not update VSync: '+error.message,false,'error')}
+});
+$('game-fps').addEventListener('change',()=>{
+ displaySettings.performanceOverlay=$('game-fps').checked;persistDisplaySettings();$('performance-overlay').checked=displaySettings.performanceOverlay;
+ try{activeEmulatorInstance()?.changeSettingOption('fps',displaySettings.performanceOverlay?'show':'hide')}catch(error){msg('Could not update the FPS overlay: '+error.message,false,'error')}
+});
+$('game-renderer').addEventListener('change',()=>{
+ try{updateGameRenderer($('game-renderer').value)}catch(error){msg('Could not update the renderer preference: '+error.message,false,'error')}
+});
+$('game-mute').addEventListener('change',()=>{
+ if(!$('game-mute').checked&&Number($('game-volume').value)===0)$('game-volume').value='50';
+ applyGameAudio();
+});
+$('game-volume').addEventListener('input',()=>{
+ if(Number($('game-volume').value)>0)$('game-mute').checked=false;
+ applyGameAudio();
+});
+$('game-touch-controls').addEventListener('change',()=>setTouchControlsPreference($('game-touch-controls').checked));
+$('game-controls-link').addEventListener('click',()=>{
+ $('game-settings-dialog').close();
+ if(activeGameRecord)window.__retrotitlesOpenControls(activeGameRecord);
+ else{controlsRecord=null;controlsSystem=activeRom?.system||'default';renderKeyboardMappings();activateTab('controls')}
+});
+$('game-save-now').addEventListener('click',()=>$('save-now').click());
+$('game-open-saves').addEventListener('click',()=>{
+ $('game-settings-dialog').close();$('save-manager').scrollIntoView({behavior:'smooth',block:'start'});
+});
+window.addEventListener('message',event=>{
+ if(event.source===$('fr').contentWindow&&event.data?.type==='rt-emulator-ready')syncGameSettings();
+});
+$('fr').addEventListener('load',syncGameSettings);
 let softFullscreen=false,fullscreenScrollY=0;
 const hasNativeFullscreen=()=>Boolean(document.fullscreenElement||document.webkitFullscreenElement);
 function syncFullscreenControls(){const active=softFullscreen||hasNativeFullscreen();$('fs').setAttribute('aria-pressed',String(active));$('fs-label').textContent=active?'Exit fullscreen':'Fullscreen'}
@@ -822,7 +1039,7 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
  const titleType=selectedCore?'EmulatorJS '+selectedCore+' title':({zip:'ZIP archive',rar:'RAR archive',html:'HTML title',htm:'HTML title',js:'JavaScript title',py:'Python title',swf:'Flash title',rpgmvp:'RPG Maker asset',rpgmvo:'RPG Maker asset',rpgmvm:'RPG Maker asset',rpgm:'RPG Maker asset',exe:'Desktop package',rgssad:'Desktop RPG Maker package',rgss3a:'Desktop RPG Maker package'})[ext]||'local file';
  const readStage=stage=>memoryWarning?stage+' (large file; browser memory may be limited)':stage;
  if(memoryWarning)window.__retrotitlesLog?.('warn','Large local file ('+sizeLabel(file.size)+'). Browser memory may be limited; streaming is preferable where supported.','app');
- cleanupGame();
+ cleanupGame();activeGameRecord=record;
  $('copy-diagnostic').hidden=true;
  $('runtime-help').hidden=!Boolean(selectedCore);$('save-manager').hidden=!Boolean(selectedCore&&window.indexedDB);
  $('stage').style.display='none';resetTouchControls();name=titleName;setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Compatibility check — '+titleType+': '+file.name,true);
@@ -1018,7 +1235,8 @@ window.addEventListener('message',event=>{
  window.__retrotitlesLog?.('error','All available cores failed for '+activeRom.system+': '+(event.data.reason||'Unknown emulator error'),'runtime');
  msg(failure,false,'error');$('core-select').focus();
 });
-$('run').onclick=play;
+$('run').onclick=restartCurrentGame;
+$('delete-all-data').addEventListener('click',clearAllLocalData);
 $('close-game').onclick=()=>{cleanupGame();resetTouchControls();$('title-name').textContent='Local title';$('title-size').textContent='';msg('Closed the current title.')};
 $('load-cancel').onclick=cancelCurrentLoad;
 $('ctl').onclick=()=>{setTouchControlsActive(!touchControlsOn);try{$('fr').contentWindow.postMessage('gr-toggle','*')}catch(e){}};

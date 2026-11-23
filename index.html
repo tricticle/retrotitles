@@ -192,6 +192,7 @@
    <span id="title-size" class="lp-size-tag"></span>
   </div>
   <div class="lp-loaded-actions">
+   <button id="game-settings-open" class="lp-button" type="button" aria-haspopup="dialog" aria-controls="game-settings-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.6.9l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.6-.9l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-1.9l-1.4-1.2 1.4-2.4 1.7.7a8 8 0 0 1 1.6-.9l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.6.9l1.7-.7 1.4 2.4-1.4 1.2a7 7 0 0 1-.1 1.8z"/></svg>Game settings</button>
    <button id="close-game" class="lp-button" type="button">Close game</button>
    <button id="run" class="lp-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></svg>Restart</button>
   <button id="fs" class="lp-button" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg><span id="fs-label">Fullscreen</span></button>
@@ -232,6 +233,43 @@
    <section class="lp-settings-group" aria-labelledby="storage-settings-title"><h2 id="storage-settings-title">Storage</h2><p>Manage indexed files in the Files tab. Browser saves stay with each active game in Play.</p><button id="settings-files-link" class="lp-inline-link" type="button">Open Files</button></section>
    <section class="lp-settings-group" aria-labelledby="advanced-settings-title"><h2 id="advanced-settings-title">Advanced</h2><p>Single-file ZIP and system selection are available while adding a title in Library.</p></section>
    <section class="lp-settings-group lp-danger-zone" aria-labelledby="danger-zone-title"><h2 id="danger-zone-title">Danger Zone</h2><p>Clears cached runtime assets and unregisters the local streaming service. Your indexed files and browser saves are not deleted.</p><button id="runtime-cache-clear" class="lp-button lp-danger-button" type="button">Clear runtime cache</button></section>
+   <section class="lp-settings-group lp-danger-zone" aria-labelledby="delete-all-title"><h2 id="delete-all-title">Delete all local data</h2><p>Removes indexed game files and file handles, browser and EmulatorJS saves, local settings, EmulatorJS caches, and cached runtime assets. It does not delete files on your computer or assets in the site’s runtime folder.</p><button id="delete-all-data" class="lp-button lp-danger-button" type="button">Delete all local data…</button><p id="delete-all-status" role="status" aria-live="polite"></p></section>
+  </div>
+ </form>
+</dialog>
+<dialog id="game-settings-dialog" class="lp-settings-dialog lp-game-settings-dialog" aria-labelledby="game-settings-title">
+ <form method="dialog" class="lp-settings-sheet">
+  <header class="lp-settings-heading"><div><p class="lp-aside-label">Current session</p><h1 id="game-settings-title">Game settings</h1></div><button class="lp-settings-close" type="submit" aria-label="Close game settings">×</button></header>
+  <div class="lp-settings-content">
+   <p id="game-settings-status" class="lp-runtime-note" role="status">Settings apply to the active title when supported.</p>
+   <section class="lp-settings-group" aria-labelledby="game-display-title">
+    <h2 id="game-display-title">Display / Upscaling</h2>
+    <label class="lp-setting-row" for="game-shader"><span>Shader</span><select id="game-shader"><option value="default">Use saved default</option></select></label>
+    <label class="lp-setting-row" for="game-custom-shader"><span>Custom shader key</span><input id="game-custom-shader" type="text" placeholder="Enter a runtime shader key"></label>
+    <label class="lp-setting-row" for="game-renderer"><span>Renderer</span><select id="game-renderer"><option value="auto">Auto</option><option value="webgl2">WebGL2</option></select></label>
+    <label class="lp-setting-toggle" for="game-vsync"><span>VSync</span><input id="game-vsync" type="checkbox"></label>
+    <label class="lp-setting-toggle" for="game-fps"><span>FPS overlay</span><input id="game-fps" type="checkbox"></label>
+    <label class="lp-setting-toggle" for="game-integer-scaling"><span>Integer scaling</span><input id="game-integer-scaling" type="checkbox" disabled></label>
+    <label class="lp-setting-row" for="game-aspect-ratio"><span>Aspect ratio</span><select id="game-aspect-ratio" disabled><option>Auto</option><option>4:3</option><option>16:9</option><option>Stretch</option></select></label>
+    <label class="lp-setting-toggle" for="game-hdr"><span>HDR output</span><input id="game-hdr" type="checkbox" disabled></label>
+    <p class="lp-setting-note">WebGL2 changes require a restart. Integer scaling, aspect-ratio overrides, and HDR output are not exposed by the bundled browser runtime.</p>
+   </section>
+   <section class="lp-settings-group" aria-labelledby="game-audio-title">
+    <h2 id="game-audio-title">Audio</h2>
+    <label class="lp-setting-toggle" for="game-mute"><span>Mute</span><input id="game-mute" type="checkbox"></label>
+    <label class="lp-setting-row" for="game-volume"><span>Volume</span><input id="game-volume" type="range" min="0" max="100" step="1" value="50"></label>
+    <p id="game-audio-note">Audio controls apply to EmulatorJS and standard audio/video elements. Some web titles manage their own audio.</p>
+   </section>
+   <section class="lp-settings-group" aria-labelledby="game-controls-title">
+    <h2 id="game-controls-title">Controls</h2>
+    <label class="lp-setting-toggle" for="game-touch-controls"><span>Touch controls</span><input id="game-touch-controls" type="checkbox"></label>
+    <button id="game-controls-link" class="lp-button" type="button">Configure keyboard and controller</button>
+   </section>
+   <section class="lp-settings-group" aria-labelledby="game-saves-title">
+    <h2 id="game-saves-title">Save states</h2>
+    <p>Save states are available for EmulatorJS titles when browser storage is supported.</p>
+    <div class="lp-game-settings-actions"><button id="game-save-now" class="lp-button" type="button">Save now</button><button id="game-open-saves" class="lp-button" type="button">Manage saves</button></div>
+   </section>
   </div>
  </form>
 </dialog>

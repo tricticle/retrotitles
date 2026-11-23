@@ -403,7 +403,47 @@
    window.dispatchEvent(new CustomEvent('library-updated'));
    msg('Rebuilt the file index. '+grouped.size+' current file(s) indexed.');
   }
-  async function clearRuntimeCache(){
+  async function clearLegacyDatabase(databaseName){
+   if(window.indexedDB.databases){
+    const databases=await window.indexedDB.databases();
+    if(!databases.some(database=>database.name===databaseName))return;
+   }
+   await new Promise((resolve,reject)=>{
+    const request=window.indexedDB.open(databaseName);
+    let created=false;
+    request.onupgradeneeded=event=>{
+     if(event.oldVersion===0){created=true;request.result.close();request.transaction.abort()}
+    };
+    request.onsuccess=()=>{
+     const db=request.result,storeName=databaseName==='retrotitles-files'?'files':'titles';
+     if(!db.objectStoreNames.contains(storeName)){db.close();resolve();return}
+     const transaction=db.transaction(storeName,'readwrite');
+     transaction.objectStore(storeName).clear();
+     transaction.oncomplete=()=>{db.close();resolve()};
+     transaction.onerror=()=>{db.close();reject(transaction.error||new Error('Could not clear legacy file storage.'))};
+     transaction.onabort=()=>{db.close();reject(transaction.error||new Error('Clearing legacy file storage was interrupted.'))};
+    };
+    request.onerror=()=>{
+     if(created){resolve();return}
+     reject(request.error||new Error('Could not open legacy file storage for cleanup.'));
+    };
+    request.onblocked=()=>reject(new Error('Legacy file storage is blocked by another tab. Close other RetroTitles tabs and retry.'));
+   });
+  }
+  async function clearAllIndexedFiles(){
+   if(!supported)return;
+   await ready;
+   await writeQueue;
+   for(const databaseName of LEGACY_DATABASES)await clearLegacyDatabase(databaseName);
+   const db=await openDb(),transaction=db.transaction([STORE,META],'readwrite');
+   transaction.objectStore(STORE).clear();
+   transaction.objectStore(META).clear();
+   transaction.objectStore(META).put({key:'migration-v1',value:true});
+   await transactionDone(transaction);
+   selectedFileIds.clear();
+   window.dispatchEvent(new CustomEvent('library-updated'));
+  }
+  async function clearRuntimeCache({reload=true}={}){
    if('serviceWorker'in navigator){
     const registrations=await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.filter(registration=>{
@@ -415,11 +455,13 @@
     const names=await caches.keys();
     await Promise.all(names.filter(name=>name.startsWith('retrotitles-')).map(name=>caches.delete(name)));
    }
-   location.reload();
+   if(reload)location.reload();
   }
   window.__retrotitlesIngestFiles=ingestFiles;
   window.__retrotitlesIngestHandles=ingestHandles;
   window.__retrotitlesRefreshFiles=refresh;
+  window.__retrotitlesClearIndexedFiles=clearAllIndexedFiles;
+  window.__retrotitlesClearRuntimeCache=()=>clearRuntimeCache({reload:false});
   manager.hidden=false;
   if(!supported){
    status.textContent='This browser does not support local file storage.';
