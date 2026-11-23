@@ -114,7 +114,7 @@ function readStoredObject(key,fallback){
 }
 const displaySettings={renderer:'auto',vsync:true,performanceOverlay:false,upscaleFilter:'auto',displayScale:'fit',aspectRatio:'auto',integerScaling:false,pauseOnHidden:false,muteOnHidden:false,...readStoredObject('retrotitles-display-settings',{})};
 if(!['auto','webgl2'].includes(displaySettings.renderer))displaySettings.renderer='auto';
-if(!['auto','nearest','sharp','smooth'].includes(displaySettings.upscaleFilter))displaySettings.upscaleFilter='auto';
+if(!['auto','nearest'].includes(displaySettings.upscaleFilter))displaySettings.upscaleFilter='auto';
 if(!['fit','100','150','200','integer'].includes(displaySettings.displayScale))displaySettings.displayScale='fit';
 if(!['auto','4:3','16:9','stretch'].includes(displaySettings.aspectRatio))displaySettings.aspectRatio='auto';
 let shaderOverrides=readStoredObject('retrotitles-shader-overrides',{});
@@ -306,26 +306,54 @@ function romPage(source,system,n,streamed=false,coreId=system,biosPath=''){
   [window.WebGLRenderingContext?.prototype,window.WebGL2RenderingContext?.prototype].forEach(prototype=>watch(prototype,['drawArrays','drawElements']));
   watch(window.CanvasRenderingContext2D?.prototype,['putImageData','drawImage']);
    let currentDisplaySettings=null;
+   const observedCanvasParents=new WeakSet();
+   let canvasSizeObserver=null;
    const applyDisplaySettingsToCanvases=()=>{
-    const settings=currentDisplaySettings||{},canvases=document.querySelectorAll('canvas');
-    canvases.forEach(canvas=>{
-     canvas.style.imageRendering=settings.upscaleFilter==='nearest'||settings.integerScaling?'pixelated':'auto';
-     canvas.style.objectFit=settings.aspectRatio==='stretch'?'fill':'contain';
-     if(settings.aspectRatio==='4:3')canvas.style.aspectRatio='4 / 3';
-     else if(settings.aspectRatio==='16:9')canvas.style.aspectRatio='16 / 9';
-     else canvas.style.removeProperty('aspect-ratio');
-     if(settings.displayScale==='100')canvas.style.width='100%',canvas.style.height='100%';
-     else if(settings.displayScale==='150')canvas.style.width='150%',canvas.style.height='150%';
-     else if(settings.displayScale==='200')canvas.style.width='200%',canvas.style.height='200%';
-     else if(settings.displayScale==='integer'||settings.displayScale==='fit')canvas.style.width='100%',canvas.style.height='100%';
+    const settings=currentDisplaySettings||{};
+    document.querySelectorAll('canvas').forEach(canvas=>{
+     const parent=canvas.parentElement;
+     const bounds=parent?.getBoundingClientRect();
+     const availableWidth=bounds?.width||window.innerWidth;
+     const availableHeight=bounds?.height||window.innerHeight;
+     const sourceWidth=canvas.width||availableWidth;
+     const sourceHeight=canvas.height||availableHeight;
+     const pixelPerfect=settings.integerScaling||settings.displayScale==='integer';
+     let width,height;
+     if(pixelPerfect){
+      const integerScale=Math.max(1,Math.floor(Math.min(availableWidth/sourceWidth,availableHeight/sourceHeight)));
+      width=sourceWidth*integerScale;
+      height=sourceHeight*integerScale;
+     }else if(settings.aspectRatio==='stretch'){
+      const scale=settings.displayScale==='150'?1.5:settings.displayScale==='200'?2:1;
+      width=availableWidth*scale;
+      height=availableHeight*scale;
+     }else{
+      const ratio=settings.aspectRatio==='4:3'?4/3:settings.aspectRatio==='16:9'?16/9:sourceWidth/sourceHeight;
+      const fitWidth=Math.min(availableWidth,availableHeight*ratio);
+      const fitHeight=fitWidth/ratio;
+      const scale=settings.displayScale==='150'?1.5:settings.displayScale==='200'?2:1;
+      width=fitWidth*scale;
+      height=fitHeight*scale;
+     }
+     canvas.style.imageRendering=settings.upscaleFilter==='nearest'?'pixelated':'auto';
+     canvas.style.width=Math.round(width)+'px';
+     canvas.style.height=Math.round(height)+'px';
+     canvas.style.display='block';
+     canvas.style.margin='auto';
+     if(parent&&canvasSizeObserver&&!observedCanvasParents.has(parent)){
+      observedCanvasParents.add(parent);
+      canvasSizeObserver.observe(parent);
+     }
     });
    };
+   if(typeof ResizeObserver==='function')canvasSizeObserver=new ResizeObserver(applyDisplaySettingsToCanvases);
    const applyDisplaySettings=event=>{
     if(event.source!==parent||event.data?.type!=='rt-display-settings')return;
     currentDisplaySettings=event.data.settings||{};
     applyDisplaySettingsToCanvases();
    };
    window.addEventListener('message',applyDisplaySettings);
+   window.addEventListener('resize',applyDisplaySettingsToCanvases);
    new MutationObserver(applyDisplaySettingsToCanvases).observe(document.documentElement,{childList:true,subtree:true});
   window.addEventListener('error',event=>report(event.message||'The emulator reported a loading error.'));
   window.addEventListener('unhandledrejection',event=>report(event.reason?.message||event.reason||'The emulator failed while loading.'));
@@ -916,6 +944,7 @@ function syncGameSettings(){
  $('game-custom-shader').disabled=$('game-shader').disabled;
  $('game-renderer').disabled=!ready||!emulator.supportsWebgl2;
  $('game-vsync').disabled=!ready;$('game-fps').disabled=!ready;
+ ['game-upscale-filter','game-display-scale','game-aspect-ratio','game-integer-scaling'].forEach(id=>$(id).disabled=!ready);
  $('game-vsync').checked=ready?emulator.getSettingValue?.('vsync')!=='disabled':displaySettings.vsync!==false;
  $('game-fps').checked=ready?emulator.getSettingValue?.('fps')==='show':Boolean(displaySettings.performanceOverlay);
  $('game-renderer').value=displaySettings.renderer;
