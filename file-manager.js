@@ -82,12 +82,13 @@
     request.onerror=()=>reject(request.error||new Error('Could not read file index metadata.'));
    });
   }
-  async function hashBlob(blob){
+  async function hashBlob(blob,onProgress){
    if(!window.crypto?.subtle||!blob?.slice)return null;
    const chunkSize=2*1024*1024,digests=[];
    for(let offset=0;offset<blob.size;offset+=chunkSize){
     const bytes=await blob.slice(offset,offset+chunkSize).arrayBuffer();
     digests.push(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));
+    onProgress?.(Math.min(offset+bytes.byteLength,blob.size),blob.size);
    }
    const combined=new Uint8Array(digests.length*32);
    digests.forEach((digest,index)=>combined.set(digest,index*32));
@@ -130,12 +131,15 @@
    writeQueue=pending.catch(()=>{});
    return pending;
   }
-  async function ingestFiles(files,{source='picker',parentArchiveId=null,depth=0,emit=true}={}){
+  async function ingestFiles(files,{source='picker',parentArchiveId=null,depth=0,emit=true,onProgress=null}={}){
    if(!supported){msg('This browser cannot store files locally. The selected title can still be opened, but it will not appear in the persistent file manager.',false,'warn');return[]}
    if(ready)await ready;
    const inputs=Array.from(files||[]).map(asInput).filter(item=>item.file);
+   const totalBytes=inputs.reduce((total,input)=>total+(Number(input.file.size)||0),0),progressTotal=totalBytes||inputs.length;
+   let completedBytes=0;
    const results=[];
-   for(const input of inputs){
+   for(let index=0;index<inputs.length;index++){
+    const input=inputs[index];
     const file=input.file,path=normalizePath(input.path||file.name);
     if(!path||path.split('/').some(part=>part==='..'))throw new Error('A selected file has an invalid path.');
     const name=path.split('/').pop(),blob=file instanceof Blob?file:null;
@@ -143,21 +147,32 @@
     const record={
      id:newId(),path,name,size:Number(file.size)||0,type:file.type||'application/octet-stream',
      source,parentArchiveId,system:systemFor(name),addedAt:Date.now(),normalizedPath:path.toLowerCase(),
-     hash:blob?await hashBlob(blob):null,blob:input.handleRef?null:blob,handleRef:input.handleRef||null,superseded:false
+     hash:null,blob:input.handleRef?null:blob,handleRef:input.handleRef||null,superseded:false
     };
+    if(blob){
+     onProgress?.({phase:'hash',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index,total:progressTotal});
+     record.hash=await hashBlob(blob,(done,total)=>{
+      onProgress?.({phase:'hash',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes+done:index+(total?done/total:1),total:progressTotal});
+     });
+    }
     const saved=await queueRecord(record);
     results.push(saved.record);
+    completedBytes+=Number(file.size)||0;
+    onProgress?.({phase:'save',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index+1,total:progressTotal});
     if(saved.duplicate||!isArchive(name)||depth>=5)continue;
     if(!extractArchive)continue;
     const extracted=await extractArchive(file);
     if(!extracted.length)continue;
     const archiveDirectory=path.includes('/')?path.slice(0,path.lastIndexOf('/')+1):'';
-    for(const entry of extracted){
+    for(let entryIndex=0;entryIndex<extracted.length;entryIndex++){
+     const entry=extracted[entryIndex];
+     onProgress?.({phase:'extract',fileName:path,fileIndex:entryIndex+1,fileCount:extracted.length,done:entryIndex,total:extracted.length});
      const entryPath=normalizePath(entry.name);
      if(!entryPath||entryPath.startsWith('__MACOSX/')||entryPath==='.DS_Store')continue;
      const child=await entry.get();
      const childPath=archiveDirectory+entryPath;
-     results.push(...await ingestFiles([{file:child,path:childPath}],{source:'archive',parentArchiveId:saved.id,depth:depth+1,emit:false}));
+     results.push(...await ingestFiles([{file:child,path:childPath}],{source:'archive',parentArchiveId:saved.id,depth:depth+1,emit:false,onProgress}));
+     onProgress?.({phase:'extract',fileName:path,fileIndex:entryIndex+1,fileCount:extracted.length,done:entryIndex+1,total:extracted.length});
     }
    }
    if(inputs.length&&emit){
@@ -514,7 +529,10 @@
    const files=Array.from(event.target.files||[]);event.target.value='';
    if(!files.length)return;
    status.textContent='Adding '+files.length+' file'+(files.length===1?'':'s')+'…';
-   ingestFiles(files,{source:'file-manager'}).then(()=>msg('Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.')).catch(error=>{status.textContent='Could not add the selected files.';msg('Could not save files: '+error.message,false,'error')});
+   ingestFiles(files,{source:'file-manager',onProgress:window.__retrotitlesIngestProgress}).then(()=>{
+    status.textContent='Added '+files.length+' file'+(files.length===1?'':'s')+' locally.';
+    msg('Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.');
+   }).catch(error=>{status.textContent='Could not add the selected files.';msg('Could not save files: '+error.message,false,'error')});
   };
   if(window.showOpenFilePicker&&window.indexedDB){
    $('library-add').hidden=false;

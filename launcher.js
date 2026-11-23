@@ -32,13 +32,13 @@ try{runtimePreference=localStorage.getItem('retrotitles-local-runtimes');if(runt
 $('runtime-note').hidden=!$('local-runtime').checked;
 $('local-runtime').onchange=()=>{$('runtime-note').hidden=!runtimeIsLocal();runtimePreference=String(runtimeIsLocal());try{localStorage.setItem('retrotitles-local-runtimes',runtimePreference)}catch(e){}};
 let busyWarningTimer=null;
-const msg=(text,busy=false,level='info',progress=null)=>{
+const msg=(text,busy=false,level='info',progress=null,cancelable=true)=>{
  const output=$('msg'),textOutput=$('msg-text'),bar=$('load-progress');
  textOutput.textContent=text;output.setAttribute('aria-busy',String(busy));output.classList.toggle('is-visible',Boolean(text)||busy);
  bar.hidden=!busy;
  if(busy&&progress&&Number.isFinite(progress.total)&&progress.total>0)bar.value=Math.min(100,progress.done/progress.total*100);
  else bar.removeAttribute('value');
- $('load-cancel').hidden=!busy;
+ $('load-cancel').hidden=!busy||!cancelable;
  if(!progress)window.__retrotitlesLog?.(level,text,'app');
  if(busyWarningTimer)clearTimeout(busyWarningTimer);
  if(busy)busyWarningTimer=setTimeout(()=>{
@@ -47,6 +47,25 @@ const msg=(text,busy=false,level='info',progress=null)=>{
   textOutput.textContent=warning;window.__retrotitlesLog?.('warn',warning,'app');
  },90000);
 };
+let lastIngestProgressAt=0;
+const reportIngestProgress=progress=>{
+ if(progress.phase==='hash'&&progress.done<progress.total){
+  const now=performance.now();
+  if(now-lastIngestProgressAt<120)return;
+  lastIngestProgressAt=now;
+ }
+ const percent=progress.total>0?Math.min(100,Math.floor(progress.done/progress.total*100)):0;
+ let text;
+ if(progress.phase==='extract'){
+  text='Unpacking '+progress.fileName+' — '+progress.fileIndex+' of '+progress.fileCount+' files ('+percent+'%)';
+ }else if(progress.phase==='hash'){
+  text='Saving '+progress.fileName+' locally — '+percent+'% ('+progress.fileIndex+' of '+progress.fileCount+')';
+ }else{
+  text='Saved '+progress.fileName+' locally — '+percent+'% ('+progress.fileIndex+' of '+progress.fileCount+')';
+ }
+ msg(text,true,'info',progress.total>0?{done:progress.done,total:progress.total}:null,false);
+};
+window.__retrotitlesIngestProgress=reportIngestProgress;
 const b64=buf=>{const u=new Uint8Array(buf);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
 const esc=s=>s.replace(/<\/script/gi,'<\\/script');
 const HEAD='<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>retrotitles</title>';
@@ -1204,7 +1223,7 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
  const archiveZip=ext==='zip'&&!selectedCore;
  if(activeReader)activeReader.cancel().catch(()=>{});
  const loadId=++loadSequence;
- if(!ingested)await window.__retrotitlesIngestFiles([file],{source});
+ if(!ingested)await window.__retrotitlesIngestFiles([file],{source,onProgress:reportIngestProgress});
  if(loadId!==loadSequence)return;
  customControlsAvailable=!selectedCore;
  const titleType=selectedCore?'EmulatorJS '+selectedCore+' title':({zip:'ZIP archive',rar:'RAR archive',html:'HTML title',htm:'HTML title',js:'JavaScript title',py:'Python title',swf:'Flash title',rpgmvp:'RPG Maker asset',rpgmvo:'RPG Maker asset',rpgmvm:'RPG Maker asset',rpgm:'RPG Maker asset',exe:'Desktop package',rgssad:'Desktop RPG Maker package',rgss3a:'Desktop RPG Maker package'})[ext]||'local file';
@@ -1325,12 +1344,12 @@ $('fd').onchange=e=>{
  const files=Array.from(e.target.files),paths=files.map(file=>file.webkitRelativePath||file.name);e.target.value='';
  if(!files.length)return;
  const loadId=++loadSequence;
- window.__retrotitlesIngestFiles(files,{source:'folder'}).then(()=>{if(loadId===loadSequence)loadFolder(files,paths,loadId)}).catch(error=>msg('Could not add folder files: '+error.message,false,'error'));
+ window.__retrotitlesIngestFiles(files,{source:'folder',onProgress:reportIngestProgress}).then(()=>{if(loadId===loadSequence)loadFolder(files,paths,loadId)}).catch(error=>msg('Could not add folder files: '+error.message,false,'error'));
 };
-async function filesFromDrop(dataTransfer){
+async function filesFromDrop(dataTransfer,onProgress=()=>{}){
  const files=[];
  const collectHandle=async(handle,prefix='')=>{
-  if(handle.kind==='file'){const file=await handle.getFile();files.push({file,path:prefix+file.name});return}
+  if(handle.kind==='file'){const file=await handle.getFile();files.push({file,path:prefix+file.name});onProgress(files.length);return}
   for await(const [name,child] of handle.entries())await collectHandle(child,prefix+handle.name+'/');
  };
  for(const item of Array.from(dataTransfer.items||[])){
@@ -1340,7 +1359,7 @@ async function filesFromDrop(dataTransfer){
   const entry=item.webkitGetAsEntry?.();
   if(entry){
    const walk=async(current,prefix='')=>{
-    if(current.isFile){const file=await new Promise((resolve,reject)=>current.file(resolve,reject));files.push({file,path:prefix+current.name});return}
+    if(current.isFile){const file=await new Promise((resolve,reject)=>current.file(resolve,reject));files.push({file,path:prefix+current.name});onProgress(files.length);return}
     if(current.isDirectory){
      const reader=current.createReader();
      while(true){const children=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!children.length)break;for(const child of children)await walk(child,prefix+current.name+'/')}
@@ -1348,25 +1367,33 @@ async function filesFromDrop(dataTransfer){
    };
    await walk(entry);continue;
   }
-  const file=item.getAsFile?.();if(file)files.push({file,path:file.name});
+  const file=item.getAsFile?.();if(file){files.push({file,path:file.name});onProgress(files.length)}
  }
  if(files.length)return files;
- return Array.from(dataTransfer.files||[]).map(file=>({file,path:file.name}));
+ return Array.from(dataTransfer.files||[]).map((file,index)=>{onProgress(index+1);return{file,path:file.name}});
 }
 $('drop').ondragover=e=>{e.preventDefault();$('drop').classList.add('is-over')};
 $('drop').ondragleave=()=>$('drop').classList.remove('is-over');
 $('drop').ondrop=async e=>{
  e.preventDefault();$('drop').classList.remove('is-over');
  try{
-  const items=await filesFromDrop(e.dataTransfer),files=items.map(item=>item.file),paths=items.map(item=>item.path);
+  msg('Scanning dropped files…',true,'info',{done:0,total:0},false);
+  let lastScanUpdate=0;
+  const items=await filesFromDrop(e.dataTransfer,count=>{
+   const now=performance.now();
+   if(now-lastScanUpdate<120)return;
+   lastScanUpdate=now;
+   msg('Scanning dropped files — '+count+' found…',true,'info',{done:count,total:0},false);
+  }),files=items.map(item=>item.file),paths=items.map(item=>item.path);
+  msg('Found '+files.length+' file'+(files.length===1?'':'s')+'. Preparing local files…',true,'info',{done:0,total:0},false);
   if(!files.length){msg('No files were found in that drop.');return}
   if(files.length>1){
    if(paths.some(path=>path.includes('/'))){
     const loadId=++loadSequence;
-    await window.__retrotitlesIngestFiles(items,{source:'drag-drop'});
+    await window.__retrotitlesIngestFiles(items,{source:'drag-drop',onProgress:reportIngestProgress});
     if(loadId===loadSequence)await loadFolder(files,paths,loadId);
    }else{
-    await window.__retrotitlesIngestFiles(items,{source:'drag-drop'});
+    await window.__retrotitlesIngestFiles(items,{source:'drag-drop',onProgress:reportIngestProgress});
     msg('Added '+files.length+' files to the unified file view.');
    }
    return;
@@ -1374,7 +1401,7 @@ $('drop').ondrop=async e=>{
   const file=files[0];
   if(paths[0]&&paths[0].includes('/')){
    const loadId=++loadSequence;
-   await window.__retrotitlesIngestFiles(items,{source:'drag-drop'});
+   await window.__retrotitlesIngestFiles(items,{source:'drag-drop',onProgress:reportIngestProgress});
    if(loadId===loadSequence)await loadFolder(files,paths,loadId);
   }
   else await load(file,{source:'drag-drop'});
