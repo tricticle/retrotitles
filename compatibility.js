@@ -1,7 +1,7 @@
 (()=>{
  const norm=path=>{
   const parts=[];
-  path.split('/').forEach(part=>{
+  path.replace(/\\/g,'/').split('/').forEach(part=>{
    if(part==='..')parts.pop();
    else if(part&&part!=='.')parts.push(part);
   });
@@ -10,7 +10,7 @@
  const RPG_CORE_FILES=['js/rpg_core.js','js/rpg_core.min.js','js/rmmz_core.js','js/rmmz_core.min.js'];
  const rpgMakerName=core=>!core?'RPG Maker MV/MZ':/rmmz/.test(core)?'RPG Maker MZ':'RPG Maker MV';
  function inspectRpgMaker(names){
-  const clean=names.map(name=>norm(name).replace(/\\/g,'/')).filter(Boolean);
+  const clean=names.map(norm).filter(Boolean);
   const indexes=clean.filter(name=>/(^|\/)index\.html?$/i.test(name)).sort((a,b)=>a.split('/').length-b.split('/').length);
   for(const index of indexes){
    const slash=index.lastIndexOf('/'),base=slash<0?'':index.slice(0,slash+1),baseLower=base.toLowerCase();
@@ -40,12 +40,13 @@
  }
  function isDesktopRpgMaker(names){
   return names.some(name=>{
-   const path=norm(name).replace(/\\/g,'/');
+   const path=norm(name);
    return /(^|\/)(game\.ini|game\.rgssad|game\.rgss3a)$/i.test(path)||/\.(rgssad|rgss3a)$/i.test(path);
   });
  }
  function findStreamIndex(names){
-  return findRpgMakerIndex(names)||names.filter(name=>/(^|\/)index\.html?$/i.test(name)).sort((a,b)=>a.split('/').length-b.split('/').length)[0]||'';
+  const normalized=names.map(norm);
+  return findRpgMakerIndex(normalized)||normalized.filter(name=>/(^|\/)index\.html?$/i.test(name)).sort((a,b)=>a.split('/').length-b.split('/').length)[0]||'';
  }
  async function findMissingRpgMakerScripts(entries,index){
   const pageEntry=entries.find(entry=>norm(entry.name).toLowerCase()===norm(index).toLowerCase());

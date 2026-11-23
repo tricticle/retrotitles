@@ -466,6 +466,10 @@ html, body { margin: 0; min-height: 100%; }
         .lp-library-name { min-width: 0; overflow: hidden; color: #34574f; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
         .lp-library-actions { display: flex; flex: 0 0 auto; gap: 7px; }
         .lp-library-actions .lp-button { min-height: 32px; }
+        .lp-file-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+        .lp-file-actions .lp-button { min-height: 32px; }
+        .lp-file-manager .lp-library-empty { margin-top: 8px; }
+        .lp-file-name { min-width: 0; overflow-wrap: anywhere; color: #34574f; font-size: 13px; font-weight: 650; }
         .lp-save-manager { margin-top: 20px; padding: 16px 3px 0; border-top: 1px solid rgba(22, 60, 54, .12); }
         .lp-save-manager[hidden] { display: none; }
         .lp-save-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -480,6 +484,7 @@ html, body { margin: 0; min-height: 100%; }
         .lp-save-name { min-width: 0; overflow-wrap: anywhere; color: #34574f; font-size: 12px; font-weight: 650; }
         .lp-save-size { display: block; color: var(--lp-muted); font-size: 10px; font-weight: 400; }
         @media (max-width: 480px) {
+          .lp-file-actions { flex-wrap: wrap; }
           .lp-save-heading { align-items: flex-start; flex-direction: column; }
           .lp-save-actions { flex-wrap: wrap; }
           .lp-save-row { align-items: flex-start; flex-direction: column; padding: 10px 0; }
@@ -548,6 +553,7 @@ html, body { margin: 0; min-height: 100%; }
         }
         .lp-loaded-actions .lp-button { min-height: 34px; font-size: 11px; }
         .lp-touch-active { border-color: #a1b478; background: #eef2df; color: #496334; }
+        .lp-control-help { margin: 0 3px 12px; color: var(--lp-muted); font-size: 11px; line-height: 1.5; }
         .lp-player {
           position: relative;
           overflow: hidden;

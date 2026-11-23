@@ -13,6 +13,8 @@ retrotitles is a browser-based launcher for running personal title files and sma
 - Stream large ROMs and multi-file ZIP/folder titles on demand, subject to browser and service-worker support. Unity and Unreal browser builds use streaming so their separate and compressed assets can load correctly.
 - Check RPG Maker MV/MZ browser exports for their required start page, system data, and core script before streaming. File reads and ZIP embedding show progress and can be canceled; large titles may still exceed browser memory.
 - Add configurable touch controls, restart, use fullscreen, and export supported titles as a standalone HTML file.
+- Use EmulatorJS's built-in keyboard, gamepad, and touch controls for emulated systems; other titles can show on-screen controls on touch devices. Choose supported EmulatorJS shader presets (bicubic, SABR, or ScaleHQ) for compatible cores.
+- Store arbitrary files in the browser file manager to reopen supported titles, download files, or remove them. Files remain in local browser storage; emulator save states have their own manager.
 - Save local file handles to a title library and reopen them after granting browser permission.
 - Use browser gamepads and the embedded emulator menu for controller mapping and save states where supported by that core. The launcher lists browser-stored EmulatorJS states and can save, load, import, download, or remove them. Browser storage can be cleared; download important saves as backups.
 - Keep the page structure and styles in `index.html` and `launcher.css`. Launcher behavior is split across `launcher.js`, `compatibility.js`, and `save-manager.js`; bundled runtime/vendor code remains separate.
@@ -61,3 +63,5 @@ runtime/
 Use JSZip 3.10.1, Ruffle 0.7.1, and Pyodide 0.26.4 to match the online defaults. EmulatorJS 4.2.3 is available from its [official releases](https://github.com/EmulatorJS/EmulatorJS/releases); the archive is about 300 MB and expands to roughly 296 MB because it includes many cores. Copy the full `data/` directory, not just `loader.js`. Local runtime mode still requires `localhost` or HTTPS for service-worker streaming, and Python titles that import extra packages need those packages included in the local Pyodide distribution.
 
 Large ROMs are streamed to the emulator in ranges, but each core may still load the game into memory. Actual limits depend on the browser, device memory, core, format, and any required BIOS files; no browser emulator can guarantee support for every game or arbitrary file size.
+
+Browser graphics options are emulator shaders, not AMD FSR or native graphics drivers. Native DLL injection and hardware frame-generation APIs are not available to content running in an iframe. True support for these requires a native game/runtime and compatible hardware.

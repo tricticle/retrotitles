@@ -51,11 +51,16 @@ const wrapJS=js=>HEAD+'<style>html,body{margin:0;height:100%;background:#000;ove
 
 const swfPage=(source,streamed=false)=>{const local=runtimeIsLocal(),runtime=local?'runtime/ruffle/ruffle.js':'https://unpkg.com/@ruffle-rs/ruffle',failure=local?'Missing local Ruffle runtime at '+runtime:'Could not load Ruffle from the CDN.';return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#c{width:100%;height:100%}</style><script src="'+runtime+'" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.body.textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><div id="c"></div><script>\naddEventListener("load",()=>{const p=RufflePlayer.newest().createPlayer();p.style.cssText="width:100%;height:100%";document.getElementById("c").appendChild(p);p.ruffle().load('+ (streamed?'{url:'+JSON.stringify(source)+'}':'{data:Uint8Array.from(atob('+JSON.stringify(source)+'),c=>c.charCodeAt(0))}') +')});\n<\/script></body></html>'};
 
-const romPage=(source,core,n,streamed=false)=>{const local=runtimeIsLocal(),root=local?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/',failure=local?'Missing local EmulatorJS runtime at '+root+'loader.js':'Could not load EmulatorJS from the CDN.';return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#game{width:100%;height:100%}</style></head><body><div id="game"></div><script>\nEJS_player="#game";EJS_core='+JSON.stringify(core)+';EJS_threads='+JSON.stringify(core==='psp')+';EJS_gameName='+JSON.stringify(n)+';EJS_pathtodata='+JSON.stringify(root)+';EJS_startOnLoaded=true;EJS_gameUrl='+JSON.stringify(streamed?source:'data:application/octet-stream;base64,'+source)+';EJS_ready=function(){parent.postMessage({type:"rt-emulator-ready"},"*")};\n<\/script><script src="'+root+'loader.js" onerror=\'document.getElementById("game").textContent='+JSON.stringify(failure)+'\'><\/script></body></html>'};
+const availableShaders=['disabled','bicubic','sabr','2xScaleHQ.glslp','4xScaleHQ.glslp'];
+let emulatorShader='disabled';
+try{const savedShader=localStorage.getItem('retrotitles-emulator-shader');if(availableShaders.includes(savedShader))emulatorShader=savedShader}catch(e){}
+$('emulator-shader').value=emulatorShader;
+$('emulator-shader').onchange=()=>{emulatorShader=$('emulator-shader').value;try{localStorage.setItem('retrotitles-emulator-shader',emulatorShader)}catch(e){}};
+const romPage=(source,core,n,streamed=false)=>{const local=runtimeIsLocal(),root=local?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/',failure=local?'Missing local EmulatorJS runtime at '+root+'loader.js':'Could not load EmulatorJS from the CDN.';return HEAD+'<style>html,body{margin:0;height:100%;background:#000}#game{width:100%;height:100%}</style></head><body><div id="game"></div><script>\nEJS_player="#game";EJS_core='+JSON.stringify(core)+';EJS_threads='+JSON.stringify(core==='psp')+';EJS_gameName='+JSON.stringify(n)+';EJS_pathtodata='+JSON.stringify(root)+';EJS_startOnLoaded=true;EJS_defaultOptions={shader:'+JSON.stringify(emulatorShader)+'};EJS_gameUrl='+JSON.stringify(streamed?source:'data:application/octet-stream;base64,'+source)+';EJS_ready=function(){parent.postMessage({type:"rt-emulator-ready"},"*")};\n<\/script><script src="'+root+'loader.js" onerror=\'document.getElementById("game").textContent='+JSON.stringify(failure)+'\'><\/script></body></html>'};
 
 const pyPage=code=>{const local=runtimeIsLocal(),runtime=local?'runtime/pyodide/pyodide.js':'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js',failure=local?'Missing local Pyodide runtime at '+runtime:'Could not load Pyodide from the CDN.';return HEAD+'<style>html,body{margin:0;background:#111;color:#ddd;font:13px ui-monospace,monospace}canvas{display:block;margin:0 auto;max-width:100%;background:#000}pre{margin:8px;white-space:pre-wrap}</style><script src="'+runtime+'" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.getElementById("o").textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><canvas id="cv" width="800" height="600"></canvas><pre id="o">Loading Python…\n</pre><script>\nconst CODE='+JSON.stringify(code).replace(/</g,'\\u003c')+';\n(async()=>{const o=document.getElementById("o");const w=t=>o.textContent+=t+"\\n";try{const py=await loadPyodide({stdout:w,stderr:w});py.canvas.setCanvas2D(document.getElementById("cv"));await py.loadPackagesFromImports(CODE);o.textContent="";await py.runPythonAsync(CODE)}catch(e){w(String(e))}})();\n<\/script></body></html>'};
 
-const norm=p=>{const o=[];p.split('/').forEach(s=>{if(s==='..')o.pop();else if(s&&s!=='.')o.push(s)});return o.join('/')};
+const norm=p=>{const o=[];p.replace(/\\/g,'/').split('/').forEach(s=>{if(s==='..')o.pop();else if(s&&s!=='.')o.push(s)});return o.join('/')};
 const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',svg:'image/svg+xml',webp:'image/webp',mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',mp4:'video/mp4',webm:'video/webm',wasm:'application/wasm',m4a:'audio/mp4',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',txt:'text/plain',xml:'application/xml',mjs:'text/javascript',js:'text/javascript',json:'application/json',css:'text/css',html:'text/html'};
 const mimeOf=n=>MIME[n.split('.').pop().toLowerCase()]||'application/octet-stream';
 
@@ -177,12 +182,15 @@ const CTRL_FN=function(){
  document.body.appendChild(root);
  function vis(v){root.style.display=v?'block':'none';if(!v)end()}
  root.__grToggle=function(){vis(root.style.display==='none')};
+ root.__grShow=function(){vis(true)};
  vis(true);
  }
  addEventListener('message',function(e){
-  if(e.data!=='gr-toggle')return;
+  if(e.data!=='gr-toggle'&&e.data!=='gr-show')return;
   if(!window.__grc){createControls();return}
-  var root=document.getElementById('grc');if(root&&root.__grToggle)root.__grToggle();
+  var root=document.getElementById('grc');
+  if(root&&e.data==='gr-show'&&root.__grShow)root.__grShow();
+  else if(root&&root.__grToggle)root.__grToggle();
  });
 };
 const PLAYER_LOG_FN=function(){
@@ -214,9 +222,9 @@ const PLAYER_LOG_FN=function(){
   };
  });
 };
-const addCtl=h=>{
+const addCtl=(h,includeControls=true)=>{
  const diagnostics='<script>('+PLAYER_LOG_FN.toString()+')()<\/script>';
- const controls='<script>('+CTRL_FN.toString()+')()<\/script>';
+ const controls=includeControls?'<script>('+CTRL_FN.toString()+')()<\/script>':'';
  let page=h,head=/<head[^>]*>/i.exec(page);
  if(head)page=page.slice(0,head.index+head[0].length)+diagnostics+page.slice(head.index+head[0].length);
  else page=diagnostics+page;
@@ -225,7 +233,8 @@ const addCtl=h=>{
 };
 
 
-let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null;
+let streamUrl=null,provider=null,providerId=null,loadSequence=0,activeReader=null,customControlsAvailable=true;
+const hasTouchInput=()=>Boolean(navigator.maxTouchPoints>0||window.matchMedia?.('(pointer: coarse)').matches);
 const canSW=()=>'serviceWorker' in navigator&&window.isSecureContext;
 function withTimeout(promise,milliseconds,message){
  let timer;
@@ -354,6 +363,7 @@ if(canUseLibrary()){
  renderLibrary().catch(error=>msg('Could not load title library: '+error.message,false,'error'));
 }
 window.__retrotitlesSaveManager({$,msg,sizeLabel,getTitleName:()=>name});
+window.__retrotitlesFileManager({$,msg,sizeLabel,openFile:file=>load(file)});
 async function streamLocalFile(file,loadId=loadSequence){
  if(!canSW())throw new Error('Streaming large local files needs this page opened over HTTPS or localhost.');
  msg('Starting local streaming service…',true);
@@ -382,10 +392,10 @@ async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
  if(!idx)throw new Error('No start page was found in this folder or archive.');
  const base=idx.includes('/')?idx.slice(0,idx.lastIndexOf('/')+1):'';
  const map=new Map(),low=new Map();
- const relevant=entries.filter(entry=>!entry.name.startsWith('__MACOSX')&&entry.name.startsWith(base));
+ const relevant=entries.filter(entry=>!norm(entry.name).startsWith('__MACOSX')&&norm(entry.name).slice(0,base.length).toLowerCase()===base.toLowerCase());
  for(let i=0;i<relevant.length;i++){
   if(loadId!==loadSequence)throw new DOMException('Load canceled','AbortError');
-  const entry=relevant[i],key=norm(entry.name.slice(base.length));
+  const entry=relevant[i],normalizedName=norm(entry.name),key=norm(normalizedName.slice(base.length));
   map.set(key,entry);low.set(key.toLowerCase(),entry);
   if(i===relevant.length-1||i%100===0){
    msg('Preparing stream — '+(i+1)+' of '+relevant.length+' files',true,'info',{done:i+1,total:relevant.length});
@@ -412,7 +422,7 @@ async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
  return true;
 }
 function engineWebExport(entries){
- const names=entries.map(entry=>entry.name);
+ const names=entries.map(entry=>norm(entry.name));
  const indexes=names.filter(path=>/(^|\/)index\.html?$/i.test(path));
  if(!indexes.length)return null;
  const indexFor=asset=>indexes.filter(index=>{
@@ -426,7 +436,7 @@ function engineWebExport(entries){
  return wasm&&hasPayload?{name:'Unreal Engine',index:indexFor(wasm)}:null;
 }
 async function zipRequiresStreaming(entries,index){
- const entry=entries.find(item=>item.name===index);
+ const entry=entries.find(item=>norm(item.name).toLowerCase()===norm(index).toLowerCase());
  if(!entry)return false;
  const page=await entry.get();
  const doc=new DOMParser().parseFromString(await page.text(),'text/html');
@@ -439,12 +449,13 @@ async function tryStream(file,loadId=loadSequence,entries=null){
 function showStream(controls=true,page=''){
  portable=false;html=page;
  $('code').value='/* Streaming mode: files are served from the selected local file, ZIP, or folder as the title requests them. No single-file export is available in this mode. Keep this page open while playing. */';
- $('dl').disabled=$('cp').disabled=true;$('ctl').disabled=!controls;
+ customControlsAvailable=controls;
+ $('dl').disabled=$('cp').disabled=true;$('ctl').hidden=!controls;
  $('fr').setAttribute('sandbox','allow-scripts allow-same-origin allow-pointer-lock allow-forms allow-modals');
  $('stage').style.display='block';play();
 }
 async function loadFolder(files){
- if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=++loadSequence,folderName=(files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';streamUrl=null;name=folderName;$('stage').style.display='none';resetTouchControls();setLoadedTitle(name,files.length+' local files');$('save-manager').hidden=true;msg('Checking '+files.length+' folder files…',true);
+ if(!files.length)return;if(activeReader)activeReader.cancel().catch(()=>{});const loadId=++loadSequence,folderName=(files[0].webkitRelativePath||files[0].name).split('/')[0]||'Local folder';streamUrl=null;customControlsAvailable=true;name=folderName;$('stage').style.display='none';resetTouchControls();setLoadedTitle(name,files.length+' local files');$('save-manager').hidden=true;msg('Checking '+files.length+' folder files…',true);
  try{
    const entries=files.map(f=>({name:f.webkitRelativePath||f.name,get:async()=>f}));
    const names=entries.map(entry=>entry.name);
@@ -467,12 +478,19 @@ async function loadFolder(files){
 function show(open){
  $('code').value=html.length>1.5e6?'/* Code is large ('+Math.round(html.length/1e6)+' MB, mostly embedded title data). Use Download or Copy. */':html;
  $('dl').disabled=$('cp').disabled=!portable;
+ $('ctl').hidden=!customControlsAvailable;
  $('fr').setAttribute('sandbox','allow-scripts allow-pointer-lock allow-forms allow-modals'+(open?' allow-same-origin':''));
  $('stage').style.display='block';play();
 }
 let touchControlsOn=false;
-function resetTouchControls(){touchControlsOn=false;const b=$('ctl');b.setAttribute('aria-pressed','false');b.classList.remove('lp-touch-active');$('ctl-label').textContent='Add touch controls'}
-function play(){resetTouchControls();const f=$('fr');if(streamUrl&&!html){f.removeAttribute('srcdoc');f.src='about:blank';setTimeout(()=>f.src=streamUrl,60)}else{f.removeAttribute('src');f.srcdoc=html}}
+function setTouchControlsActive(active){touchControlsOn=active;$('ctl').setAttribute('aria-pressed',String(active));$('ctl').classList.toggle('lp-touch-active',active);$('ctl-label').textContent=active?'Hide screen controls':'Show screen controls'}
+function resetTouchControls(){setTouchControlsActive(false)}
+function play(){
+ resetTouchControls();
+ const f=$('fr');
+ f.onload=()=>{if(customControlsAvailable&&hasTouchInput()){setTouchControlsActive(true);f.contentWindow.postMessage('gr-show','*')}};
+ if(streamUrl&&!html){f.removeAttribute('srcdoc');f.src='about:blank';setTimeout(()=>f.src=streamUrl,60)}else{f.removeAttribute('src');f.srcdoc=html}
+}
 let softFullscreen=false,fullscreenScrollY=0;
 const hasNativeFullscreen=()=>Boolean(document.fullscreenElement||document.webkitFullscreenElement);
 function syncFullscreenControls(){const active=softFullscreen||hasNativeFullscreen();$('fs').setAttribute('aria-pressed',String(active));$('fs-label').textContent=active?'Exit fullscreen':'Fullscreen'}
@@ -514,6 +532,7 @@ async function load(file){
  const loadId=++loadSequence,ext=file.name.split('.').pop().toLowerCase();
  const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
  const selectedCore=$('core-select').value||CORES[ext],archiveZip=ext==='zip'&&!selectedCore;
+ customControlsAvailable=!selectedCore;
  const titleType=selectedCore?'EmulatorJS '+selectedCore+' title':({zip:'ZIP archive',rar:'RAR archive',html:'HTML title',htm:'HTML title',js:'JavaScript title',py:'Python title',swf:'Flash title',rpgmvp:'RPG Maker asset',rpgmvo:'RPG Maker asset',rpgmvm:'RPG Maker asset',rpgm:'RPG Maker asset',exe:'Desktop package',rgssad:'Desktop RPG Maker package',rgss3a:'Desktop RPG Maker package'})[ext]||'local file';
  const memoryLimit=(navigator.deviceMemory||4)*128*1024*1024,memoryWarning=file.size>Math.min(512*1024*1024,memoryLimit);
  const readStage=stage=>memoryWarning?stage+' (large file; browser memory may be limited)':stage;
@@ -559,8 +578,8 @@ async function load(file){
   }
   if(selectedCore&&file.size>=STREAM_THRESHOLD){
    if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
-   html=addCtl(romPage(streamUrl,selectedCore,titleName,true));portable=false;
-   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showStream(true,html);return;
+   html=addCtl(romPage(streamUrl,selectedCore,titleName,true),false);portable=false;
+   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showStream(false,html);return;
   }
   if(ext==='swf'&&file.size>=STREAM_THRESHOLD){
    if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
@@ -592,7 +611,7 @@ async function load(file){
   else throw new Error('Unsupported file type: .'+ext);
   if(loadId!==loadSequence)return;
   html=loadedHtml;
-  if(ctl)html=addCtl(html);$('ctl').disabled=!ctl;
+  if(ctl)html=addCtl(html,!selectedCore);$('ctl').hidden=!customControlsAvailable;
   msg('Ready: '+titleType+' — '+file.name+(portable?'':' (This build can\u2019t be exported as a single file; host the original folder instead)'));
   show(open);
  }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
@@ -606,7 +625,7 @@ $('drop').ondragleave=()=>$('drop').classList.remove('is-over');
 $('drop').ondrop=e=>{e.preventDefault();$('drop').classList.remove('is-over');const files=e.dataTransfer.files;if(files.length!==1){msg(files.length?'Drop one title file at a time.':'No file was found in that drop.');return}load(files[0])};
 $('run').onclick=play;
 $('load-cancel').onclick=cancelCurrentLoad;
-$('ctl').onclick=()=>{touchControlsOn=!touchControlsOn;$('ctl').setAttribute('aria-pressed',String(touchControlsOn));$('ctl').classList.toggle('lp-touch-active',touchControlsOn);$('ctl-label').textContent=touchControlsOn?'Hide touch controls':'Add touch controls';try{$('fr').contentWindow.postMessage('gr-toggle','*')}catch(e){}};
+$('ctl').onclick=()=>{setTouchControlsActive(!touchControlsOn);try{$('fr').contentWindow.postMessage('gr-toggle','*')}catch(e){}};
 $('fs').onclick=toggleFullscreen;
 $('fs-exit').onclick=exitFullscreen;
 $('dl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=name+'-runnable.html';a.click()};
