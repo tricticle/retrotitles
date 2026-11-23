@@ -1,7 +1,0 @@
-/*
-  Cross-Origin-Opener-Policy: same-origin
-  Cross-Origin-Embedder-Policy: require-corp
-
-/runtime/*
-  Cross-Origin-Resource-Policy: cross-origin
-  Cache-Control: no-cache

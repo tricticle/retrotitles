@@ -1,5 +1,12 @@
 // Serves files for the game runner on demand. Keep this file next to the HTML page.
 const RUNTIME_CACHE = 'retrotitles-runtime-v4.2.3';
+const streamHeaders = contentType => new Headers({
+  'Content-Type': contentType,
+  'Accept-Ranges': 'bytes',
+  'Cache-Control': 'no-store',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Resource-Policy': 'same-origin'
+});
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil((async () => {
   const cachesToDelete = (await caches.keys()).filter(name => name.startsWith('retrotitles-runtime-') && name !== RUNTIME_CACHE);
@@ -42,8 +49,8 @@ async function ask(streamId, path) {
 async function handle(req, streamId, path) {
   try {
     const r = await ask(streamId, path);
-    if (!r || !r.blob) return new Response('Not found: ' + path, { status: 404 });
-    const h = new Headers({ 'Content-Type': r.type || 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' });
+    if (!r || !r.blob) return new Response('Not found: ' + path, { status: 404, headers: streamHeaders('text/plain; charset=utf-8') });
+    const h = streamHeaders(r.type || 'application/octet-stream');
     if (r.encoding) { h.set('Content-Encoding', r.encoding); return new Response(r.blob, { status: 200, headers: h }); }
     const size = r.blob.size, rg = req.headers.get('range');
     h.set('Content-Length', String(size));
@@ -74,7 +81,7 @@ async function handle(req, streamId, path) {
     }
     return new Response(r.blob, { status: 200, headers: h });
   } catch (err) {
-    return new Response(String(err), { status: 500 });
+    return new Response(String(err), { status: 500, headers: streamHeaders('text/plain; charset=utf-8') });
   }
 }
 

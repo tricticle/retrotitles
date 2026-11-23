@@ -51,14 +51,14 @@ const b64=buf=>{const u=new Uint8Array(buf);let s='';for(let i=0;i<u.length;i+=0
 const esc=s=>s.replace(/<\/script/gi,'<\\/script');
 const HEAD='<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>retrotitles</title>';
 const CORES={
- a52:'atari5200',a26:'atari2600',a78:'atari7800',vb:'vb',vboy:'vb',iso:'psp',
+ a52:'atari5200',a26:'atari2600',a78:'atari7800',vb:'vb',vboy:'vb',
  nes:'nes',fds:'nes',unif:'nes',unf:'nes',smc:'snes',sfc:'snes',swc:'snes',fig:'snes',bs:'snes',st:'snes',
  gb:'gb',gbc:'gb',dmg:'gb',gba:'gba',n64:'n64',z64:'n64',v64:'n64',u1:'n64',ndd:'n64',nds:'nds',
  md:'segaMD',mdx:'segaMD',gen:'segaMD',smd:'segaMD',sms:'segaMS',gg:'segaGG',sg:'segaMS',sgd:'segaMS','32x':'sega32x',
  col:'coleco',cv:'coleco',lnx:'lynx',ngp:'ngp',ngc:'ngp',pce:'pce',ws:'ws',wsc:'ws',pc2:'ws',j64:'jaguar',jag:'jaguar',
  adf:'amiga',adz:'amiga',dms:'amiga',fdi:'amiga',ipf:'amiga',hdf:'amiga',hdz:'amiga',lha:'amiga',uae:'amiga',
- d64:'c64',d71:'c64',d80:'c64',d81:'c64',d82:'c64',g64:'c64',g41:'c64',x64:'c64',nib:'c64',d2m:'c64',d4m:'c64',t64:'c64',tap:'c64',tcrt:'c64',prg:'c64',p00:'c64',crt:'c64',cmd:'c64',vfl:'c64',vsf:'c64',
- dsk:'cap32',sna:'cap32',cdt:'cap32',cpr:'cap32',voc:'cap32',kcr:'crocods',
+ d64:'c64',d71:'c64',d80:'c64',d81:'c64',d82:'c64',g64:'c64',g41:'c64',x64:'c64',nib:'c64',d2m:'c64',d4m:'c64',t64:'c64',tcrt:'c64',prg:'c64',p00:'c64',crt:'c64',cmd:'c64',vfl:'c64',vsf:'c64',
+ sna:'cap32',cdt:'cap32',cpr:'cap32',voc:'cap32',kcr:'crocods',
  p:'81',z80:'fuse',rzx:'fuse',scl:'fuse',trd:'fuse',wad:'prboom',iwad:'prboom',pwad:'prboom',
  cso:'psp',prx:'psp',elf:'psp',conf:'dos'
 };
@@ -238,8 +238,10 @@ async function checkRuntimeAssets(system,cores){
  if(!available.length)throw new Error('Runtime asset missing: '+corePaths[0]+'. Check that runtime/ was deployed.');
  return available;
 }
+const uploadedBios=new Map();
 async function findRequiredBios(system){
  const requirement=BIOS_REQUIREMENTS[system];
+ if(uploadedBios.has(system))return uploadedBios.get(system);
  if(!requirement)return'';
  const path='runtime/bios/'+requirement.system+'/'+requirement.filename,url=new URL(path,location.href).href;
  try{
@@ -249,8 +251,23 @@ async function findRequiredBios(system){
  }catch(error){
   console.error('Expected BIOS filename:',requirement.filename,'at',url,error);
  }
- throw new Error('This system requires a BIOS file. Place it in runtime/bios/'+requirement.system+'/ and reload.');
+ throw new Error('This system requires a BIOS file. Upload '+requirement.filename+' in Settings > BIOS files, or place it in runtime/bios/'+requirement.system+'/ and reload.');
 }
+const biosSystemSelect=$('bios-system');
+biosSystemSelect.replaceChildren(...Array.from($('core-select').options).filter(option=>option.value).map(option=>new Option(option.textContent,option.value)));
+biosSystemSelect.value='psx';
+$('bios-file').addEventListener('change',event=>{
+ const input=event.currentTarget,file=input.files?.[0];
+ input.value='';
+ if(!file)return;
+ if(!file.size){$('bios-status').textContent='The selected BIOS file is empty.';return}
+ const system=$('bios-system').value,requirement=BIOS_REQUIREMENTS[system];
+ const url=URL.createObjectURL(file),previous=uploadedBios.get(system);
+ uploadedBios.set(system,url);
+ if(previous)URL.revokeObjectURL(previous);
+ const detail=requirement?' Expected filename: '+requirement.filename+'.':' Make sure it is the BIOS expected by this system.';
+ $('bios-status').textContent='BIOS selected for '+$('bios-system').selectedOptions[0].textContent+'.'+detail+' It will be used on the next launch.';
+});
 function romPage(source,system,n,streamed=false,coreId=system,biosPath=''){
  const root=runtimeIsLocal()?'runtime/emulatorjs/data/':'https://cdn.emulatorjs.net/stable/data/';
  const failure=runtimeIsLocal()?'Missing local EmulatorJS runtime at '+root+'loader.js':'Could not load EmulatorJS from the CDN.';
@@ -334,7 +351,7 @@ async function prepareRom(source,system,title,streamed,loadId){
 const pyPage=code=>{const local=runtimeIsLocal(),runtime=local?'runtime/pyodide/pyodide.js':'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js',failure=local?'Missing local Pyodide runtime at '+runtime:'Could not load Pyodide from the CDN.';return HEAD+'<style>html,body{margin:0;background:#111;color:#ddd;font:13px ui-monospace,monospace}canvas{display:block;margin:0 auto;max-width:100%;background:#000}pre{margin:8px;white-space:pre-wrap}</style><script src="'+runtime+'" crossorigin="anonymous" onerror=\'document.addEventListener("DOMContentLoaded",()=>{document.getElementById("o").textContent='+JSON.stringify(failure)+'})\'><\/script></head><body><canvas id="cv" width="800" height="600"></canvas><pre id="o">Loading Python…\n</pre><script>\nconst CODE='+JSON.stringify(code).replace(/</g,'\\u003c')+';\n(async()=>{const o=document.getElementById("o");const w=t=>o.textContent+=t+"\\n";try{const py=await loadPyodide({stdout:w,stderr:w});py.canvas.setCanvas2D(document.getElementById("cv"));await py.loadPackagesFromImports(CODE);o.textContent="";await py.runPythonAsync(CODE)}catch(e){w(String(e))}})();\n<\/script></body></html>'};
 
 const norm=p=>{const o=[];p.replace(/\\/g,'/').split('/').forEach(s=>{if(s==='..')o.pop();else if(s&&s!=='.')o.push(s)});return o.join('/')};
-const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',svg:'image/svg+xml',webp:'image/webp',mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',mp4:'video/mp4',webm:'video/webm',wasm:'application/wasm',m4a:'audio/mp4',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',txt:'text/plain',xml:'application/xml',mjs:'text/javascript',js:'text/javascript',json:'application/json',css:'text/css',html:'text/html'};
+const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',svg:'image/svg+xml',webp:'image/webp',mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',mp4:'video/mp4',webm:'video/webm',wasm:'application/wasm',m4a:'audio/mp4',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',txt:'text/plain',xml:'application/xml',mjs:'text/javascript',js:'text/javascript',json:'application/json',css:'text/css',html:'text/html',cue:'text/plain',m3u:'text/plain',ccd:'text/plain'};
 const mimeOf=n=>MIME[n.split('.').pop().toLowerCase()]||'application/octet-stream';
 
 async function extractRarEntries(buf,loadId){
@@ -718,8 +735,8 @@ async function streamLocalFile(file,loadId=loadSequence){
  catch(e){throw new Error('Could not start the local file streaming service. Open this page over HTTPS or localhost. '+(e.message||''))}
  if(loadId!==loadSequence)return false;
  providerId=newProviderId();
- provider=async path=>path==='game.bin'?{blob:file,type:file.type||mimeOf(file.name)}:{};
- streamUrl=new URL('__game/'+providerId+'/game.bin',location.href).href;
+ provider=async path=>path===file.name?{blob:file,type:file.type||mimeOf(file.name)}:{};
+ streamUrl=new URL('__game/'+providerId+'/'+encodeURIComponent(file.name),location.href).href;
  return true;
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.onmessage=async e=>{
@@ -792,6 +809,31 @@ async function zipRequiresStreaming(entries,index){
 async function tryStream(file,loadId=loadSequence,entries=null){
  if(!canSW())return false;
  try{return await streamFrom(entries||await zipEntries(file),loadId)}catch(e){if(e.noSW)return false;throw e}
+}
+async function streamRomArchive(entries,romEntry,loadId){
+ if(!canSW())return false;
+ try{await navigator.serviceWorker.register('sw.js');await withTimeout(navigator.serviceWorker.ready,20000,'The local streaming service did not become ready within 20 seconds.')}
+ catch(error){throw new Error('Could not start local archive streaming. Open this page over HTTPS or localhost. '+(error.message||''))}
+ if(loadId!==loadSequence)return false;
+ const exact=new Map(),folded=new Map();
+ entries.forEach(entry=>{
+  const path=norm(entry.name);
+  if(!path||path.startsWith('__MACOSX/'))return;
+  exact.set(path,entry);folded.set(path.toLowerCase(),entry);
+ });
+ const cache=new Map();
+ providerId=newProviderId();
+ provider=async path=>{
+  path=norm(path);
+  const entry=exact.get(path)||folded.get(path.toLowerCase());
+  if(!entry)return{};
+  let blob=cache.get(entry);
+  if(!blob){blob=await entry.get();cache.set(entry,blob);if(cache.size>2)cache.delete(cache.keys().next().value)}
+  return{blob,type:mimeOf(entry.name)};
+ };
+ const romPath=norm(romEntry.name);
+ streamUrl=new URL('__game/'+providerId+'/'+romPath.split('/').map(encodeURIComponent).join('/'),location.href).href;
+ return true;
 }
 function showStream(controls=true,page=''){
  portable=false;html=page;
@@ -1097,27 +1139,39 @@ function showIsolationWarning(system){
  window.__retrotitlesLog?.('warn',diagnostic,'runtime');
 }
 async function openArchiveGame(entries,selectedCore,loadId){
- const games=entries.filter(entry=>{
+ let games=entries.filter(entry=>{
   const extension=entry.name.split('.').pop().toLowerCase();
-  return selectedCore?CORES[extension]===selectedCore||['bin','cue','chd','iso'].includes(extension):Boolean(CORES[extension]);
+  return selectedCore?CORES[extension]===selectedCore||(selectedCore==='dos'&&['exe','com','bat'].includes(extension))||['bin','cue','chd','iso'].includes(extension):Boolean(CORES[extension]);
  });
+ if(selectedCore&&games.some(entry=>entry.name.toLowerCase().endsWith('.cue')))games=games.filter(entry=>entry.name.toLowerCase().endsWith('.cue'));
  if(!games.length)return false;
  if(games.length>1){
-  msg('Archive contains multiple game files. Choose one from the unified file manager or select a system manually.',false,'warn');
-  $('core-select').focus();
+  msg('This archive contains multiple ROM candidates. Create a ZIP with only the game you want to open, or open a single ROM file directly.',false,'warn');
   return true;
  }
  if(loadId!==loadSequence)return true;
- const entry=games[0],blob=await entry.get(),gameFile=new File([blob],entry.name.split('/').pop(),{type:blob.type||'application/octet-stream'});
+ const entry=games[0];
+ if(selectedCore&&canSW()){
+  if(!await streamRomArchive(entries,entry,loadId)||loadId!==loadSequence)return true;
+  html=addCtl(await prepareRom(streamUrl,selectedCore,entry.name.split('/').pop(),true,loadId),false);
+  if(loadId!==loadSequence)return true;
+  portable=false;
+  msg('Streaming '+entry.name+' from the archive. Related files load on demand.');
+  showIsolationWarning(selectedCore);showStream(false,html);
+  return true;
+ }
+ const blob=await entry.get(),gameFile=new File([blob],entry.name.split('/').pop(),{type:blob.type||'application/octet-stream'});
  await load(gameFile,{ingested:true});
  return true;
 }
 async function load(file,{ingested=false,source='picker',record=null}={}){
  if(!file)return;
  const ext=file.name.split('.').pop().toLowerCase(),selectedCore=$('core-select').value||CORES[ext];
- if(['exe','rgssad','rgss3a'].includes(ext))throw new Error(desktopRpgMakerMessage);
+ if(ext==='7z')throw new Error('7z archives are not supported. Extract this archive on your device, then open a supported file or folder.');
+ if(!selectedCore&&['exe','rgssad','rgss3a'].includes(ext))throw new Error(desktopRpgMakerMessage);
  activeControlScope=record?'game:'+record.id:selectedCore||'default';
  const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
+ const arcadeRomZip=ext==='zip'&&['arcade','mame'].includes(selectedCore);
  const archiveZip=ext==='zip'&&!selectedCore;
  if(activeReader)activeReader.cancel().catch(()=>{});
  const loadId=++loadSequence;
@@ -1132,10 +1186,15 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
  $('stage').style.display='none';resetTouchControls();name=titleName;setLoadedTitle(name,sizeLabel(file.size));portable=true;streamUrl=null;msg('Compatibility check — '+titleType+': '+file.name,true);
  try{
   let open=false,ctl=true,entries=null,loadedHtml='';
-   if(ext==='zip'){
+   if(ext==='zip'&&!arcadeRomZip){
     msg('Inspecting ZIP contents…',true);
     entries=await zipEntries(file);
    if(loadId!==loadSequence)return;
+    if(selectedCore){
+     if(await openArchiveGame(entries,selectedCore,loadId))return;
+     msg('No supported '+selectedCore+' ROM was found in this ZIP. Check the selected system and archive contents.',false,'warn');
+     return;
+    }
     const rpgProject=inspectRpgMaker(entries.map(entry=>entry.name));
     if(isDesktopRpgMaker(entries.map(entry=>entry.name)))throw new Error(desktopRpgMakerMessage);
     if(rpgProject?.missing.length)throw new Error(rpgProject.name+' browser export is incomplete. Missing: '+rpgProject.missing.join(', ')+'. Re-export the project for Web browsers and include its complete data/ and js/ folders.');
@@ -1152,22 +1211,18 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
      showStream();return;
     }
     if(!findStreamIndex(entries.map(entry=>entry.name))&&await openArchiveGame(entries,selectedCore,loadId))return;
-    if(selectedCore){
-     const streamIndex=findStreamIndex(entries.map(entry=>entry.name));
-     if(streamIndex&&canSW()){
-      const streamed=await streamFrom(entries,loadId,streamIndex);
-      if(streamed&&loadId===loadSequence){msg('Streaming browser title from '+file.name+'.');showStream();return}
-     }
-     msg('No supported '+selectedCore+' game was found in this archive. Its files are available in the unified file view.',false,'warn');
-     return;
-    }
    }
    if(archiveZip){
     if(!entries)entries=await zipEntries(file);
     if(loadId!==loadSequence)return;
    const engine=engineWebExport(entries);
    const streamIndex=engine?.index||findStreamIndex(entries.map(entry=>entry.name));
-   if(!streamIndex){msg('ZIP contents were added to the unified file view. Choose a supported game file there.',false,'warn');return}
+   if(!streamIndex){
+    const ambiguous=entries.map(entry=>entry.name.split('.').pop().toLowerCase()).filter(extension=>['bin','cue','chd','iso','tap','dsk'].includes(extension));
+    if(ambiguous.length)msg('Could not identify the ROM system in this ZIP. Set Default system in Settings, then load the ZIP again.',false,'warn');
+    else msg('No browser start page was found in this ZIP. Select a system manually for a ROM archive, or choose a ZIP containing a browser game.',false,'warn');
+    return;
+   }
    const moduleBuild=await zipRequiresStreaming(entries,streamIndex);
    if(loadId!==loadSequence)return;
    if(engine||moduleBuild){
@@ -1178,10 +1233,13 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
     msg('Streaming '+buildName+' build from '+file.name+'. Keep this page open while playing.');showStream();return;
    }
   }
-  if(selectedCore&&file.size>=STREAM_THRESHOLD){
+  if(selectedCore&&canSW()){
    if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
    html=addCtl(await prepareRom(streamUrl,selectedCore,titleName,true,loadId),false);if(loadId!==loadSequence)return;portable=false;
-   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it in chunks; the emulator may still need to load the title into memory.');showIsolationWarning(selectedCore);showStream(false,html);return;
+   msg('Local file ready ('+sizeLabel(file.size)+'). The browser serves it on demand; the emulator may still need to load the title into memory.');showIsolationWarning(selectedCore);showStream(false,html);return;
+  }
+  if(selectedCore&&file.size>=STREAM_THRESHOLD){
+   throw new Error('Streaming large emulator files needs this page opened over HTTPS or localhost.');
   }
   if(ext==='swf'&&file.size>=STREAM_THRESHOLD){
    if(!await streamLocalFile(file,loadId)||loadId!==loadSequence)return;
@@ -1205,7 +1263,7 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
   else if(ext==='rar'){
    const archiveBuffer=await readFileBuffer(file,loadId,readStage('Reading RAR archive')),rarEntries=await extractRarEntries(archiveBuffer,loadId);
    if(await openArchiveGame(rarEntries,selectedCore,loadId))return;
-   if(!findStreamIndex(rarEntries.map(entry=>entry.name))){msg('RAR contents were added to the unified file view. Choose a supported game file there.',false,'warn');return}
+   if(!findStreamIndex(rarEntries.map(entry=>entry.name))){msg('No supported ROM or browser project was found in this RAR archive.',false,'warn');return}
    const rarFiles={};
    for(const entry of rarEntries){const blob=await entry.get(),bytes=new Uint8Array(await blob.arrayBuffer());rarFiles[entry.name]={name:entry.name,async:type=>type==='string'?new TextDecoder().decode(bytes):type==='base64'?b64(bytes):bytes.slice().buffer}}
    loadedHtml=await build({files:rarFiles},loadId);open=!portable;
@@ -1216,6 +1274,7 @@ async function load(file,{ingested=false,source='picker',record=null}={}){
   else if(ext==='py'){loadedHtml=pyPage(await readFileText(file,loadId,readStage('Reading Python title')));open=true;}
    else if(['rpgmvp','rpgmvo','rpgmvm','rpgm'].includes(ext))throw new Error('This is a single RPG Maker asset, not a complete project. Open the exported MV/MZ folder or ZIP containing index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js.');
   else if(selectedCore){loadedHtml=await prepareRom(b64(await readFileBuffer(file,loadId,readStage('Reading emulator title'))),selectedCore,titleName,false,loadId);open=true;}
+  else if(['bin','cue','chd','iso','tap','dsk'].includes(ext))throw new Error('Could not identify the system from the .'+ext+' extension. Choose its system in Settings > Emulation and try again.');
   else throw new Error('Unsupported file type: .'+ext);
   if(loadId!==loadSequence)return;
   html=loadedHtml;

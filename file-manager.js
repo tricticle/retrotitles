@@ -21,7 +21,7 @@
   const isArchive=name=>['zip','rar'].includes(extOf(name));
   const systemFor=name=>{
    const extension=extOf(name);
-   const systems={nes:'nes',fds:'nes',unif:'nes',unf:'nes',smc:'snes',sfc:'snes',gb:'gb',gbc:'gb',gba:'gba',n64:'n64',z64:'n64',nds:'nds',md:'segaMD',gen:'segaMD',iso:'psp',cso:'psp',prx:'psp',chd:null,cue:null,bin:null};
+   const systems={nes:'nes',fds:'nes',unif:'nes',unf:'nes',smc:'snes',sfc:'snes',gb:'gb',gbc:'gb',gba:'gba',n64:'n64',z64:'n64',nds:'nds',md:'segaMD',gen:'segaMD',cso:'psp',prx:'psp',chd:null,cue:null,bin:null,iso:null,tap:null,dsk:null};
    return systems[extension]||null;
   };
   function openDb(){
