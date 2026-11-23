@@ -312,10 +312,18 @@
     if(checkbox.checked)selectedFileIds.add(record.id);else selectedFileIds.delete(record.id);
     $('file-delete-selected').disabled=selectedFileIds.size===0;
    });
-   const details=document.createElement('span');details.className='lp-file-name';details.append(document.createTextNode(record.path));
-   const metadata=document.createElement('span');metadata.className='lp-save-size';metadata.textContent=sizeLabel(record.size);
-   details.append(metadata);
+   const fileInfo=document.createElement('span');fileInfo.className='lp-file-name';fileInfo.title=record.path;
+   const title=document.createElement('span');title.className='lp-file-title';title.textContent=record.name;
+   const metadata=document.createElement('span');metadata.className='lp-save-size';
+   metadata.textContent=(record.system?record.system+' · ':'')+sizeLabel(record.size);
+   fileInfo.append(title,metadata);
+   const tags=document.createElement('span');tags.className='lp-file-tags';
    const source=document.createElement('span');source.className='lp-source-badge';source.textContent=record.source.replace(/[-_]/g,' ');
+   tags.append(source);
+   if(record.parentArchiveId){
+    const archive=document.createElement('span');archive.className='lp-source-badge';archive.textContent='from '+(parentNames.get(record.parentArchiveId)||'archive');
+    tags.append(archive);
+   }
    const actions=document.createElement('span');actions.className='lp-library-actions';
    actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
    if(record.blob){
@@ -324,11 +332,7 @@
     }));
    }
    actions.append(makeButton('Remove','Remove '+record.name,()=>removeFile(record.id).catch(error=>msg('Could not remove file: '+error.message,false,'error'))));
-   row.append(checkbox,details,source,actions);
-   if(record.parentArchiveId){
-    const archive=document.createElement('span');archive.className='lp-source-badge';archive.textContent='from '+(parentNames.get(record.parentArchiveId)||'archive');
-    row.insertBefore(archive,actions);
-   }
+   row.append(checkbox,fileInfo,tags,actions);
    return row;
   }
   function visibleRecords(records){
@@ -356,24 +360,46 @@
    const currentIds=new Set(records.filter(record=>!record.superseded).map(record=>record.id));
    selectedFileIds.forEach(id=>{if(!currentIds.has(id))selectedFileIds.delete(id)});
    $('file-delete-selected').disabled=selectedFileIds.size===0;
-   const parentNames=new Map(records.map(record=>[record.id,record.name])),groups=new Map(),topLevel=[];
+   const parentNames=new Map(records.map(record=>[record.id,record.name]));
+   const root={folders:new Map(),files:[]};
    files.forEach(record=>{
-    const directory=record.path.includes('/')?record.path.slice(0,record.path.lastIndexOf('/')):'';
-    const row=fileRow(record,parentNames);
-    if(!directory){topLevel.push(row);return}
-    let group=groups.get(directory);
-    if(!group){
-     const item=document.createElement('li'),details=document.createElement('details');details.className='lp-path-group';details.open=true;
-     const summary=document.createElement('summary');summary.textContent=directory;
-     const children=document.createElement('ul');details.append(summary,children);item.append(details);group={item,children,count:0};groups.set(directory,group);
-    }
-    group.children.append(row);group.count++;
+    const parts=record.path.split('/').filter(Boolean),filename=parts.pop();
+    let node=root;
+    parts.forEach(name=>{
+     if(!node.folders.has(name))node.folders.set(name,{name,folders:new Map(),files:[]});
+     node=node.folders.get(name);
+    });
+    node.files.push({...record,name:filename||record.name});
    });
-   for(const group of groups.values()){
-    group.item.querySelector('summary').append(document.createTextNode(' · '+group.count+' file'+(group.count===1?'':'s')));
-    topLevel.push(group.item);
-   }
-   list.append(...topLevel);
+   const folderCount=node=>{
+    node.fileCount=node.files.length+[...node.folders.values()].reduce((total,child)=>total+folderCount(child),0);
+    return node.fileCount;
+   };
+   folderCount(root);
+   const renderNode=(node,depth=0)=>{
+    const children=[];
+    for(const folder of [...node.folders.values()].sort((a,b)=>a.name.localeCompare(b.name))){
+     const item=document.createElement('li');item.className='lp-path-item';
+     const details=document.createElement('details');details.className='lp-path-group';details.open=depth===0;
+     const summary=document.createElement('summary');
+     const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+     icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');
+     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+     path.setAttribute('d','M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z');
+     icon.append(path);
+     const name=document.createElement('span');name.className='lp-folder-name';name.textContent=folder.name;
+     const count=document.createElement('span');count.className='lp-folder-count';
+     const total=folder.fileCount;count.textContent=String(total);count.setAttribute('aria-label',total+' file'+(total===1?'':'s'));
+     summary.append(icon,name,count);
+     const nested=document.createElement('ul');nested.className='lp-path-children';
+     nested.append(...renderNode(folder,depth+1));
+     details.append(summary,nested);item.append(details);children.push(item);
+    }
+    node.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(record=>children.push(fileRow(record,parentNames)));
+    return children;
+   };
+   list.classList.add('lp-file-tree');
+   list.replaceChildren(...renderNode(root));
    status.textContent=files.length+' file'+(files.length===1?'':'s')+' stored locally in this browser; nothing is uploaded.';
   }
   async function deleteSelectedFiles(){
