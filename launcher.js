@@ -632,6 +632,7 @@ const gameObjectUrls=new Set();
 function createGameObjectURL(blob){const url=URL.createObjectURL(blob);gameObjectUrls.add(url);return url}
 function cleanupGame(){
  try{$('fr').contentWindow?.__rtCleanup?.()}catch(error){window.__retrotitlesLog?.('warn','Could not clean up the previous emulator: '+error.message,'runtime')}
+ clearTitleCanvasObservers();
  gameObjectUrls.forEach(url=>URL.revokeObjectURL(url));gameObjectUrls.clear();
  activeRom=null;activeGameRecord=null;streamUrl=null;provider=null;providerId=null;
  $('fr').removeAttribute('srcdoc');$('fr').src='about:blank';$('stage').style.display='none';$('save-manager').hidden=true;$('ctl').hidden=true;syncPlayEmpty();
@@ -925,10 +926,55 @@ function resetTouchControls(){setTouchControlsActive(false)}
 function syncEmulatorDisplaySettings(){
  try{
   $('fr').contentWindow?.postMessage({type:'rt-display-settings',settings:displaySettings},'*');
+  applyTitleCanvasSettings();
  }catch(error){
   window.__retrotitlesLog?.('warn','Could not apply emulator display settings: '+error.message,'settings');
  }
 }
+let observedTitleDocument=null,titleCanvasResizeObserver=null,titleCanvasMutationObserver=null;
+function clearTitleCanvasObservers(){
+ titleCanvasResizeObserver?.disconnect();titleCanvasMutationObserver?.disconnect();
+ titleCanvasResizeObserver=null;titleCanvasMutationObserver=null;observedTitleDocument=null;
+}
+function applyTitleCanvasSettings(){
+ if(activeRom){clearTitleCanvasObservers();return}
+ let doc;
+ try{doc=$('fr').contentDocument}catch(error){return}
+ if(!doc?.documentElement)return;
+ if(doc!==observedTitleDocument){
+  clearTitleCanvasObservers();
+  observedTitleDocument=doc;
+  if(typeof ResizeObserver==='function'){
+   titleCanvasResizeObserver=new ResizeObserver(applyTitleCanvasSettings);
+   titleCanvasResizeObserver.observe(doc.documentElement);
+  }
+  titleCanvasMutationObserver=new MutationObserver(applyTitleCanvasSettings);
+  titleCanvasMutationObserver.observe(doc.documentElement,{attributes:true,attributeFilter:['width','height'],childList:true,subtree:true});
+ }
+ doc.querySelectorAll('canvas').forEach(canvas=>{
+  const parent=canvas.parentElement,bounds=parent?.getBoundingClientRect();
+  const availableWidth=bounds?.width||$('fr').clientWidth;
+  const availableHeight=bounds?.height||$('fr').clientHeight;
+  const sourceWidth=canvas.width||availableWidth,sourceHeight=canvas.height||availableHeight;
+  const pixelPerfect=displaySettings.integerScaling||displaySettings.displayScale==='integer';
+  let width,height;
+  if(pixelPerfect){
+   const scale=Math.max(1,Math.floor(Math.min(availableWidth/sourceWidth,availableHeight/sourceHeight)));
+   width=sourceWidth*scale;height=sourceHeight*scale;
+  }else if(displaySettings.aspectRatio==='stretch'){
+   const scale=displaySettings.displayScale==='150'?1.5:displaySettings.displayScale==='200'?2:1;
+   width=availableWidth*scale;height=availableHeight*scale;
+  }else{
+   const ratio=displaySettings.aspectRatio==='4:3'?4/3:displaySettings.aspectRatio==='16:9'?16/9:sourceWidth/sourceHeight;
+   const fitWidth=Math.min(availableWidth,availableHeight*ratio),scale=displaySettings.displayScale==='150'?1.5:displaySettings.displayScale==='200'?2:1;
+   width=fitWidth*scale;height=fitWidth/ratio*scale;
+  }
+  canvas.style.imageRendering=displaySettings.upscaleFilter==='nearest'?'pixelated':'auto';
+  canvas.style.width=Math.round(width)+'px';canvas.style.height=Math.round(height)+'px';
+  canvas.style.display='block';canvas.style.margin='auto';
+ });
+}
+window.addEventListener('resize',applyTitleCanvasSettings);
 document.addEventListener('visibilitychange',()=>{
  if(!activeRom)return;
  const emulator=activeEmulatorInstance();
@@ -959,12 +1005,12 @@ function syncGameSettings(){
  $('game-settings-status').textContent=!active
   ?'Open a title to adjust live session settings.'
   :ready?'Shaders, VSync, FPS, and EmulatorJS volume apply live. Renderer changes require a restart.'
-  :'EmulatorJS graphics settings are unavailable for this title. Audio works for standard media elements; some web titles manage their own sound.';
+  :'Canvas scaling works for local iframe titles when their canvas is accessible. Audio works for standard media elements; some web titles manage their own sound. Browser playback cannot add FSR, frame generation, or native HDR.';
  $('game-shader').disabled=!ready||!emulator.config?.shaders;
  $('game-custom-shader').disabled=$('game-shader').disabled;
  $('game-renderer').disabled=!ready||!emulator.supportsWebgl2;
  $('game-vsync').disabled=!ready;$('game-fps').disabled=!ready;
- ['game-upscale-filter','game-display-scale','game-aspect-ratio','game-integer-scaling'].forEach(id=>$(id).disabled=!ready);
+ ['game-upscale-filter','game-display-scale','game-aspect-ratio','game-integer-scaling'].forEach(id=>$(id).disabled=!active);
  $('game-vsync').checked=ready?emulator.getSettingValue?.('vsync')!=='disabled':displaySettings.vsync!==false;
  $('game-fps').checked=ready?emulator.getSettingValue?.('fps')==='show':Boolean(displaySettings.performanceOverlay);
  $('game-renderer').value=displaySettings.renderer;

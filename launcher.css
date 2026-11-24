@@ -1142,10 +1142,13 @@ html, body { margin: 0; min-height: 100%; }
 .lp-loaded-actions .lp-button { min-height: 40px; font-size: 12px; }
 .lp-control-help, .lp-runtime-help { color: var(--lp-muted); font-size: 12px; line-height: 1.6; }
 .lp-player {
-  min-height: 320px; border-color: #263d37; border-radius: 14px;
-  background: #101b18;
+  width: 100%; height: min(76dvh, 900px); min-height: min(58dvh, 520px);
+  border-color: #263d37; border-radius: 14px; background: #101b18;
 }
-.lp-player iframe { background: #101b18; }
+.lp-player iframe {
+  display: block; width: 100%; height: 100%; min-height: 0;
+  aspect-ratio: auto; border: 0; background: #101b18;
+}
 .lp-save-manager { margin-top: 20px; padding: 18px 0 0; border-color: var(--lp-line); }
 .lp-save-heading h3 { font-size: 16px; }
 .lp-save-warning { color: #815b3b; font-size: 12px; }
@@ -1273,8 +1276,7 @@ html, body { margin: 0; min-height: 100%; }
   .lp-loaded-heading { align-items: flex-start; }
   .lp-loaded-actions { gap: 6px; }
   .lp-loaded-actions .lp-button { flex: 1 1 auto; padding-inline: 9px; }
-  .lp-player, .lp-player iframe { min-height: 240px; }
-  .lp-player iframe { height: 65vw; }
+  .lp-player { height: min(70dvh, 760px); min-height: min(52dvh, 420px); }
   .lp-mapping-list { grid-template-columns: minmax(0, 1fr); }
   .lp-mapping-row { align-items: flex-start; flex-direction: column; padding-block: 9px; }
   .lp-mapping-row select { width: 100%; }
