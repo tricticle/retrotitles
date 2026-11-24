@@ -1,8 +1,7 @@
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
-const {inspectRpgMaker,isDesktopRpgMaker,isNwjsManifest,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop}=window.__retrotitlesCompatibility;
+const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop}=window.__retrotitlesCompatibility;
 const EMULATORJS_VERSION='4.2.3';
 const desktopRpgMakerMessage='Native desktop RPG Maker/Steam builds cannot run in this browser. If the install includes a compatible MV/MZ browser export under www/ (index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js), choose the game folder or ZIP; otherwise run it through Steam.';
-const nwjsMessage='This title requires NW.js as a desktop runtime and cannot run inside a browser iframe. Use the runtime bundled with the game, or install a compatible NW.js desktop build.';
 const tabIds=['library','files','play','controls'];
 function activateTab(id,focus=false){
  if(!tabIds.includes(id))return;
@@ -36,7 +35,6 @@ let busyWarningTimer=null;
 const msg=(text,busy=false,level='info',progress=null,cancelable=true,help='')=>{
  const output=$('msg'),textOutput=$('msg-text'),bar=$('load-progress');
  textOutput.textContent=text;output.setAttribute('aria-busy',String(busy));output.classList.toggle('is-visible',Boolean(text)||busy);
- $('nwjs-download').hidden=help!=='nwjs';
  bar.hidden=!busy;
  if(busy&&progress&&Number.isFinite(progress.total)&&progress.total>0)bar.value=Math.min(100,progress.done/progress.total*100);
  else bar.removeAttribute('value');
@@ -824,26 +822,6 @@ async function zipEntries(file){
  const zr=new window.__zip.ZipReader(new window.__zip.BlobReader(file));
  return (await zr.getEntries()).filter(e=>!e.directory).map(e=>({name:e.filename,get:()=>e.getData(new window.__zip.BlobWriter())}));
 }
-async function isNwjsProject(entries,index){
- const parts=norm(index).split('/').filter(Boolean);
- for(let depth=Math.max(0,parts.length-1);depth>=0;depth--){
-  const base=parts.slice(0,depth).join('/');
-  const manifestPath=(base?base+'/':'')+'package.json';
-  const entry=entries.find(item=>norm(item.name).toLowerCase()===manifestPath.toLowerCase());
-  if(!entry)continue;
-  let manifest;
-  try{manifest=JSON.parse(await(await entry.get()).text())}
-  catch(error){
-   if(error instanceof SyntaxError){
-    window.__retrotitlesLog?.('warn','Could not parse '+manifestPath+' while checking for NW.js: '+error.message,'compatibility');
-    return false;
-   }
-   throw error;
-  }
-  return isNwjsManifest(manifest);
- }
- return false;
-}
 async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
  const names=entries.map(e=>e.name).filter(n=>!n.startsWith('__MACOSX'));
  const idx=indexOverride||findStreamIndex(names);
@@ -943,7 +921,6 @@ async function loadFolder(files,paths=[],requestedLoadId=0){
    const entries=files.map((f,index)=>({name:paths[index]||f.webkitRelativePath||f.name,get:async()=>f}));
    const names=entries.map(entry=>entry.name);
    const streamIndex=findStreamIndex(names);
-   if(await isNwjsProject(entries,streamIndex))throw Object.assign(new Error(nwjsMessage),{nwjs:true});
    if(isDesktopRpgMaker(names))throw new Error(desktopRpgMakerMessage);
    const rpgProject=inspectRpgMaker(names);
    if(rpgProject?.missing.length)throw new Error(rpgProject.name+' browser export is incomplete. Missing: '+rpgProject.missing.join(', ')+'. Re-export the project for Web browsers and include its complete data/ and js/ folders.');
@@ -958,7 +935,7 @@ async function loadFolder(files,paths=[],requestedLoadId=0){
    const streamed=await streamFrom(entries,loadId,rpgProject?.index||'');
   if(!streamed||loadId!==loadSequence)return;
   msg((rpgProject?'Compatible '+rpgProject.name+' export. ':'')+'Streaming folder ('+files.length+' files). Files are read on demand.');showStream();
- }catch(e){if(loadId===loadSequence)msg(e.message,false,'error',null,true,e.nwjs?'nwjs':'')}
+ }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
 }
 function show(open){
  $('code').value=html.length>1.5e6?'/* Code is large ('+Math.round(html.length/1e6)+' MB, mostly embedded title data). Use Download or Copy. */':html;
@@ -1314,9 +1291,8 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
  if(!file)return;
  const ext=file.name.split('.').pop().toLowerCase(),selectedCore=systemOverride||$('core-select').value||CORES[ext];
  if(ext==='7z')throw new Error('7z archives are not supported. Extract this archive on your device, then open a supported file or folder.');
- if(ext==='nw'){msg(nwjsMessage,false,'warn',null,true,'nwjs');return}
  if(!selectedCore&&ext==='exe'){
-  msg('Native Windows .exe files cannot run in this browser. If this is a DOS program, use Try DOS in Files or Library; otherwise run it on a desktop. NW.js games also need a compatible desktop runtime.',false,'warn',null,true,'nwjs');
+  msg('Native Windows .exe files cannot run in this browser. If this is a DOS program, use Try DOS in Files or Library; otherwise run it on a desktop.',false,'warn');
   return;
  }
  if(!selectedCore&&['rgssad','rgss3a'].includes(ext))throw new Error(desktopRpgMakerMessage);
@@ -1347,7 +1323,6 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
      return;
     }
     const archiveIndex=findStreamIndex(entries.map(entry=>entry.name));
-    if(await isNwjsProject(entries,archiveIndex))throw Object.assign(new Error(nwjsMessage),{nwjs:true});
     const rpgProject=inspectRpgMaker(entries.map(entry=>entry.name));
     if(isDesktopRpgMaker(entries.map(entry=>entry.name)))throw new Error(desktopRpgMakerMessage);
     if(rpgProject?.missing.length)throw new Error(rpgProject.name+' browser export is incomplete. Missing: '+rpgProject.missing.join(', ')+'. Re-export the project for Web browsers and include its complete data/ and js/ folders.');
@@ -1415,7 +1390,6 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
   if(archiveZip){loadedHtml=await fromZip(await readFileBuffer(file,loadId,readStage('Reading ZIP archive')),loadId);open=!portable;}
   else if(ext==='rar'){
    const archiveBuffer=await readFileBuffer(file,loadId,readStage('Reading RAR archive')),rarEntries=await extractRarEntries(archiveBuffer,loadId);
-  if(await isNwjsProject(rarEntries,findStreamIndex(rarEntries.map(entry=>entry.name))))throw Object.assign(new Error(nwjsMessage),{nwjs:true});
    if(await openArchiveGame(rarEntries,selectedCore,loadId))return;
    if(!findStreamIndex(rarEntries.map(entry=>entry.name))){msg('No supported ROM or browser project was found in this RAR archive.',false,'warn');return}
    const rarFiles={};
@@ -1436,7 +1410,7 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
   msg('Ready: '+titleType+' — '+file.name+(portable?'':' (This build can\u2019t be exported as a single file; host the original folder instead)'));
   if(selectedCore)showIsolationWarning(selectedCore);
   show(open);
- }catch(e){if(loadId===loadSequence)msg(e.message,false,'error',null,true,e.nwjs?'nwjs':'')}
+ }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
 }
 $('drop').onclick=e=>{if(e.target!==$('f'))$('f').click()};
 async function ingestAndLoad(file,source){

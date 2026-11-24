@@ -45,11 +45,6 @@
   });
   return hasDesktopRuntime&&!findRpgMakerIndex(names);
  }
- function isNwjsManifest(manifest){
-  if(!manifest||typeof manifest!=='object'||Array.isArray(manifest))return false;
-  if(['node-remote','node-main','node-remote-file','nodejs','bg-script'].some(key=>Object.prototype.hasOwnProperty.call(manifest,key)))return true;
-  return typeof manifest.main==='string'&&Boolean(manifest.window)&&typeof manifest.window==='object'&&!Array.isArray(manifest.window);
- }
  function findStreamIndex(names){
   const normalized=names.map(norm);
   return findRpgMakerIndex(normalized)||normalized.filter(name=>/(^|\/)index\.html?$/i.test(name)).sort((a,b)=>a.split('/').length-b.split('/').length)[0]||'';
@@ -106,5 +101,5 @@
   if(files.length)return files;
   return Array.from(dataTransfer.files||[]).map((file,index)=>{onProgress(index+1);return{file,path:file.webkitRelativePath||file.name}});
  }
- window.__retrotitlesCompatibility={inspectRpgMaker,findRpgMakerIndex,isDesktopRpgMaker,isNwjsManifest,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop,filesFromDirectoryHandle};
+ window.__retrotitlesCompatibility={inspectRpgMaker,findRpgMakerIndex,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop,filesFromDirectoryHandle};
 })();
