@@ -1,7 +1,8 @@
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
-const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop}=window.__retrotitlesCompatibility;
+const {inspectRpgMaker,isDesktopRpgMaker,isNwjsManifest,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop}=window.__retrotitlesCompatibility;
 const EMULATORJS_VERSION='4.2.3';
 const desktopRpgMakerMessage='Native desktop RPG Maker/Steam builds cannot run in this browser. If the install includes a compatible MV/MZ browser export under www/ (index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js), choose the game folder or ZIP; otherwise run it through Steam.';
+const nwjsMessage='This title requires NW.js as a desktop runtime and cannot run inside a browser iframe. Use the runtime bundled with the game, or install a compatible NW.js desktop build.';
 const tabIds=['library','files','play','controls'];
 function activateTab(id,focus=false){
  if(!tabIds.includes(id))return;
@@ -32,9 +33,10 @@ try{runtimePreference=localStorage.getItem('retrotitles-local-runtimes');if(runt
 $('runtime-note').hidden=!$('local-runtime').checked;
 $('local-runtime').onchange=()=>{$('runtime-note').hidden=!runtimeIsLocal();runtimePreference=String(runtimeIsLocal());try{localStorage.setItem('retrotitles-local-runtimes',runtimePreference)}catch(e){}};
 let busyWarningTimer=null;
-const msg=(text,busy=false,level='info',progress=null,cancelable=true)=>{
+const msg=(text,busy=false,level='info',progress=null,cancelable=true,help='')=>{
  const output=$('msg'),textOutput=$('msg-text'),bar=$('load-progress');
  textOutput.textContent=text;output.setAttribute('aria-busy',String(busy));output.classList.toggle('is-visible',Boolean(text)||busy);
+ $('nwjs-download').hidden=help!=='nwjs';
  bar.hidden=!busy;
  if(busy&&progress&&Number.isFinite(progress.total)&&progress.total>0)bar.value=Math.min(100,progress.done/progress.total*100);
  else bar.removeAttribute('value');
@@ -131,9 +133,17 @@ function readStoredObject(key,fallback){
  try{const parsed=JSON.parse(value);return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:fallback}
  catch(error){window.__retrotitlesLog?.('warn','Could not parse saved setting '+key+': '+error.message,'settings');return fallback}
 }
-const displaySettings={renderer:'auto',vsync:true,performanceOverlay:false,upscaleFilter:'auto',displayScale:'fit',aspectRatio:'auto',integerScaling:false,pauseOnHidden:false,muteOnHidden:false,...readStoredObject('retrotitles-display-settings',{})};
+const displaySettings={renderer:'auto',vsync:true,performanceOverlay:false,upscaleFilter:'auto',playerVisualFilter:'none',displayScale:'fit',aspectRatio:'auto',integerScaling:false,pauseOnHidden:false,muteOnHidden:false,...readStoredObject('retrotitles-display-settings',{})};
 if(!['auto','webgl2'].includes(displaySettings.renderer))displaySettings.renderer='auto';
 if(!['auto','nearest'].includes(displaySettings.upscaleFilter))displaySettings.upscaleFilter='auto';
+const playerVisualFilters={
+ none:'none',
+ grayscale:'grayscale(1)',
+ sepia:'sepia(1)',
+ invert:'invert(1)',
+ contrast:'contrast(1.35) saturate(1.2)'
+};
+if(!Object.prototype.hasOwnProperty.call(playerVisualFilters,displaySettings.playerVisualFilter))displaySettings.playerVisualFilter='none';
 if(!['fit','100','150','200','integer'].includes(displaySettings.displayScale))displaySettings.displayScale='fit';
 if(!['auto','4:3','16:9','stretch'].includes(displaySettings.aspectRatio))displaySettings.aspectRatio='auto';
 let shaderOverrides=readStoredObject('retrotitles-shader-overrides',{});
@@ -145,6 +155,18 @@ function persistShader(value){
 }
 function persistDisplaySettings(){
  writeStoredValue('retrotitles-display-settings',JSON.stringify(displaySettings));
+}
+function applyPlayerVisualFilter(){
+ const player=$('fr'),filter=displaySettings.playerVisualFilter;
+ player.style.filter=playerVisualFilters[filter];
+ player.style.willChange=filter==='none'?'auto':'filter';
+}
+function setPlayerVisualFilter(value){
+ displaySettings.playerVisualFilter=Object.prototype.hasOwnProperty.call(playerVisualFilters,value)?value:'none';
+ $('player-visual-filter').value=displaySettings.playerVisualFilter;
+ $('game-player-visual-filter').value=displaySettings.playerVisualFilter;
+ persistDisplaySettings();
+ applyPlayerVisualFilter();
 }
 function populateShaderOptions(){
  const select=$('emulator-shader'),custom=$('custom-shader');
@@ -177,6 +199,9 @@ $('vsync-setting').checked=displaySettings.vsync!==false;
 $('vsync-setting').onchange=()=>{displaySettings.vsync=$('vsync-setting').checked;persistDisplaySettings()};
 $('performance-overlay').checked=Boolean(displaySettings.performanceOverlay);
 $('performance-overlay').onchange=()=>{displaySettings.performanceOverlay=$('performance-overlay').checked;persistDisplaySettings()};
+$('player-visual-filter').value=displaySettings.playerVisualFilter;
+$('player-visual-filter').onchange=()=>setPlayerVisualFilter($('player-visual-filter').value);
+applyPlayerVisualFilter();
 $('upscale-filter').value=displaySettings.upscaleFilter;
 $('upscale-filter').onchange=()=>{displaySettings.upscaleFilter=$('upscale-filter').value;persistDisplaySettings();syncEmulatorDisplaySettings()};
 $('display-scale').value=displaySettings.displayScale;
@@ -799,6 +824,26 @@ async function zipEntries(file){
  const zr=new window.__zip.ZipReader(new window.__zip.BlobReader(file));
  return (await zr.getEntries()).filter(e=>!e.directory).map(e=>({name:e.filename,get:()=>e.getData(new window.__zip.BlobWriter())}));
 }
+async function isNwjsProject(entries,index){
+ const parts=norm(index).split('/').filter(Boolean);
+ for(let depth=Math.max(0,parts.length-1);depth>=0;depth--){
+  const base=parts.slice(0,depth).join('/');
+  const manifestPath=(base?base+'/':'')+'package.json';
+  const entry=entries.find(item=>norm(item.name).toLowerCase()===manifestPath.toLowerCase());
+  if(!entry)continue;
+  let manifest;
+  try{manifest=JSON.parse(await(await entry.get()).text())}
+  catch(error){
+   if(error instanceof SyntaxError){
+    window.__retrotitlesLog?.('warn','Could not parse '+manifestPath+' while checking for NW.js: '+error.message,'compatibility');
+    return false;
+   }
+   throw error;
+  }
+  return isNwjsManifest(manifest);
+ }
+ return false;
+}
 async function streamFrom(entries,loadId=loadSequence,indexOverride=''){
  const names=entries.map(e=>e.name).filter(n=>!n.startsWith('__MACOSX'));
  const idx=indexOverride||findStreamIndex(names);
@@ -897,6 +942,8 @@ async function loadFolder(files,paths=[],requestedLoadId=0){
  try{
    const entries=files.map((f,index)=>({name:paths[index]||f.webkitRelativePath||f.name,get:async()=>f}));
    const names=entries.map(entry=>entry.name);
+   const streamIndex=findStreamIndex(names);
+   if(await isNwjsProject(entries,streamIndex))throw Object.assign(new Error(nwjsMessage),{nwjs:true});
    if(isDesktopRpgMaker(names))throw new Error(desktopRpgMakerMessage);
    const rpgProject=inspectRpgMaker(names);
    if(rpgProject?.missing.length)throw new Error(rpgProject.name+' browser export is incomplete. Missing: '+rpgProject.missing.join(', ')+'. Re-export the project for Web browsers and include its complete data/ and js/ folders.');
@@ -911,7 +958,7 @@ async function loadFolder(files,paths=[],requestedLoadId=0){
    const streamed=await streamFrom(entries,loadId,rpgProject?.index||'');
   if(!streamed||loadId!==loadSequence)return;
   msg((rpgProject?'Compatible '+rpgProject.name+' export. ':'')+'Streaming folder ('+files.length+' files). Files are read on demand.');showStream();
- }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
+ }catch(e){if(loadId===loadSequence)msg(e.message,false,'error',null,true,e.nwjs?'nwjs':'')}
 }
 function show(open){
  $('code').value=html.length>1.5e6?'/* Code is large ('+Math.round(html.length/1e6)+' MB, mostly embedded title data). Use Download or Copy. */':html;
@@ -1004,16 +1051,17 @@ function syncGameSettings(){
  const active=$('stage').style.display!=='none',emulator=activeEmulatorInstance(),media=gameMediaTargets(),ready=Boolean(emulator);
  $('game-settings-status').textContent=!active
   ?'Open a title to adjust live session settings.'
-  :ready?'Shaders, VSync, FPS, and EmulatorJS volume apply live. Renderer changes require a restart.'
-  :'Canvas scaling works for local iframe titles when their canvas is accessible. Audio works for standard media elements; some web titles manage their own sound. Browser playback cannot add FSR, frame generation, or native HDR.';
+  :ready?'Player visual filters apply to the whole iframe. Shaders, VSync, FPS, and EmulatorJS volume apply live; renderer changes require a restart.'
+  :'Player visual filters apply to the whole iframe. Canvas scaling works for local titles when their canvas is accessible. Audio works for standard media elements; some web titles manage their own sound.';
  $('game-shader').disabled=!ready||!emulator.config?.shaders;
  $('game-custom-shader').disabled=$('game-shader').disabled;
  $('game-renderer').disabled=!ready||!emulator.supportsWebgl2;
  $('game-vsync').disabled=!ready;$('game-fps').disabled=!ready;
- ['game-upscale-filter','game-display-scale','game-aspect-ratio','game-integer-scaling'].forEach(id=>$(id).disabled=!active);
+ ['game-player-visual-filter','game-upscale-filter','game-display-scale','game-aspect-ratio','game-integer-scaling'].forEach(id=>$(id).disabled=!active);
  $('game-vsync').checked=ready?emulator.getSettingValue?.('vsync')!=='disabled':displaySettings.vsync!==false;
  $('game-fps').checked=ready?emulator.getSettingValue?.('fps')==='show':Boolean(displaySettings.performanceOverlay);
  $('game-renderer').value=displaySettings.renderer;
+ $('game-player-visual-filter').value=displaySettings.playerVisualFilter;
  $('game-upscale-filter').value=displaySettings.upscaleFilter;
  $('game-display-scale').value=displaySettings.displayScale;
  $('game-aspect-ratio').value=displaySettings.aspectRatio;
@@ -1142,6 +1190,9 @@ $('game-fps').addEventListener('change',()=>{
  displaySettings.performanceOverlay=$('game-fps').checked;persistDisplaySettings();$('performance-overlay').checked=displaySettings.performanceOverlay;
  try{activeEmulatorInstance()?.changeSettingOption('fps',displaySettings.performanceOverlay?'show':'hide')}catch(error){msg('Could not update the FPS overlay: '+error.message,false,'error')}
 });
+$('game-player-visual-filter').addEventListener('change',()=>{
+ setPlayerVisualFilter($('game-player-visual-filter').value);
+});
 $('game-upscale-filter').addEventListener('change',()=>{
  displaySettings.upscaleFilter=$('game-upscale-filter').value;$('upscale-filter').value=displaySettings.upscaleFilter;persistDisplaySettings();syncEmulatorDisplaySettings();
 });
@@ -1263,7 +1314,11 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
  if(!file)return;
  const ext=file.name.split('.').pop().toLowerCase(),selectedCore=systemOverride||$('core-select').value||CORES[ext];
  if(ext==='7z')throw new Error('7z archives are not supported. Extract this archive on your device, then open a supported file or folder.');
- if(!selectedCore&&ext==='exe')throw new Error('Native Windows .exe files cannot run in this browser. If this is a DOS program, use Try DOS in Files or Library; otherwise run the Windows version on a desktop.');
+ if(ext==='nw'){msg(nwjsMessage,false,'warn',null,true,'nwjs');return}
+ if(!selectedCore&&ext==='exe'){
+  msg('Native Windows .exe files cannot run in this browser. If this is a DOS program, use Try DOS in Files or Library; otherwise run it on a desktop. NW.js games also need a compatible desktop runtime.',false,'warn',null,true,'nwjs');
+  return;
+ }
  if(!selectedCore&&['rgssad','rgss3a'].includes(ext))throw new Error(desktopRpgMakerMessage);
  activeControlScope=record?'game:'+record.id:selectedCore||'default';
  const titleName=file.name.replace(/\.[^.]+$/,'')||'Local title';
@@ -1291,6 +1346,8 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
      msg('No supported '+selectedCore+' ROM was found in this ZIP. Check the selected system and archive contents.',false,'warn');
      return;
     }
+    const archiveIndex=findStreamIndex(entries.map(entry=>entry.name));
+    if(await isNwjsProject(entries,archiveIndex))throw Object.assign(new Error(nwjsMessage),{nwjs:true});
     const rpgProject=inspectRpgMaker(entries.map(entry=>entry.name));
     if(isDesktopRpgMaker(entries.map(entry=>entry.name)))throw new Error(desktopRpgMakerMessage);
     if(rpgProject?.missing.length)throw new Error(rpgProject.name+' browser export is incomplete. Missing: '+rpgProject.missing.join(', ')+'. Re-export the project for Web browsers and include its complete data/ and js/ folders.');
@@ -1358,6 +1415,7 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
   if(archiveZip){loadedHtml=await fromZip(await readFileBuffer(file,loadId,readStage('Reading ZIP archive')),loadId);open=!portable;}
   else if(ext==='rar'){
    const archiveBuffer=await readFileBuffer(file,loadId,readStage('Reading RAR archive')),rarEntries=await extractRarEntries(archiveBuffer,loadId);
+  if(await isNwjsProject(rarEntries,findStreamIndex(rarEntries.map(entry=>entry.name))))throw Object.assign(new Error(nwjsMessage),{nwjs:true});
    if(await openArchiveGame(rarEntries,selectedCore,loadId))return;
    if(!findStreamIndex(rarEntries.map(entry=>entry.name))){msg('No supported ROM or browser project was found in this RAR archive.',false,'warn');return}
    const rarFiles={};
@@ -1378,7 +1436,7 @@ async function load(file,{ingested=false,source='picker',record=null,systemOverr
   msg('Ready: '+titleType+' — '+file.name+(portable?'':' (This build can\u2019t be exported as a single file; host the original folder instead)'));
   if(selectedCore)showIsolationWarning(selectedCore);
   show(open);
- }catch(e){if(loadId===loadSequence)msg(e.message,false,'error')}
+ }catch(e){if(loadId===loadSequence)msg(e.message,false,'error',null,true,e.nwjs?'nwjs':'')}
 }
 $('drop').onclick=e=>{if(e.target!==$('f'))$('f').click()};
 async function ingestAndLoad(file,source){
