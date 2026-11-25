@@ -71,7 +71,7 @@
  async function filesFromDirectoryHandle(handle,onProgress=()=>{}){
   const files=[];
   const collectHandle=async(handle,prefix='')=>{
-   if(handle.kind==='file'){const file=await handle.getFile();files.push({file,path:prefix+file.name});onProgress(files.length);return}
+   if(handle.kind==='file'){const file=await handle.getFile();files.push({file,path:prefix+file.name,handleRef:handle});onProgress(files.length);return}
    for await(const [name,child] of handle.entries())await collectHandle(child,prefix+handle.name+'/');
   };
   await collectHandle(handle);

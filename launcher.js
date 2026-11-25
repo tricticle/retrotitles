@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);let html='',name='Title',portable=true;
-const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop}=window.__retrotitlesCompatibility;
+const {inspectRpgMaker,isDesktopRpgMaker,findStreamIndex,findMissingRpgMakerScripts,filesFromDrop,filesFromDirectoryHandle}=window.__retrotitlesCompatibility;
 const EMULATORJS_VERSION='4.2.3';
 const desktopRpgMakerMessage='Native desktop RPG Maker/Steam builds cannot run in this browser. If the install includes a compatible MV/MZ browser export under www/ (index.html, data/System.json, and js/rpg_core.js or js/rmmz_core.js), choose the game folder or ZIP; otherwise run it through Steam.';
 const tabIds=['library','files','play','controls'];
@@ -60,6 +60,8 @@ const reportIngestProgress=progress=>{
   text='Unpacking '+progress.fileName+' — '+progress.fileIndex+' of '+progress.fileCount+' files ('+percent+'%)';
  }else if(progress.phase==='hash'){
   text='Saving '+progress.fileName+' locally — '+percent+'% ('+progress.fileIndex+' of '+progress.fileCount+')';
+ }else if(progress.direct){
+  text='Linked '+progress.fileName+' for direct access — '+progress.fileIndex+' of '+progress.fileCount;
  }else{
   text='Saved '+progress.fileName+' locally — '+percent+'% ('+progress.fileIndex+' of '+progress.fileCount+')';
  }
@@ -668,10 +670,10 @@ const PLAYER_LOG_FN=function(){
  });
 };
 const addCtl=(h,includeControls=true,controlScope='default',fallbackScope='default')=>{
- const diagnostics='<script>('+PLAYER_LOG_FN.toString()+')()<\\/script>';
+ const diagnostics='<script>('+PLAYER_LOG_FN.toString()+')()</script>';
  const configuredMap={...(controlMappings.default||{}),...(controlMappings[fallbackScope]||{}),...(controlMappings[controlScope]||{})};
  const configuredLayout=Object.prototype.hasOwnProperty.call(controlLayouts,controlScope)?{...(controlLayouts[controlScope]||{})}:{...(controlLayouts.default||{}),...(controlLayouts[fallbackScope]||{})};
- const controls=includeControls?'<script>('+CTRL_FN.toString()+')('+JSON.stringify(controlScope)+','+JSON.stringify(fallbackScope)+','+JSON.stringify(configuredMap)+','+JSON.stringify(configuredLayout)+')<\\/script>':'';
+ const controls=includeControls?'<script>('+CTRL_FN.toString()+')('+JSON.stringify(controlScope)+','+JSON.stringify(fallbackScope)+','+JSON.stringify(configuredMap)+','+JSON.stringify(configuredLayout)+')</script>':'';
  let page=h,head=/<head[^>]*>/i.exec(page);
  if(head)page=page.slice(0,head.index+head[0].length)+diagnostics+page.slice(head.index+head[0].length);
  else page=diagnostics+page;
@@ -1040,10 +1042,15 @@ function syncEmulatorDisplaySettings(){
   window.__retrotitlesLog?.('warn','Could not apply emulator display settings: '+error.message,'settings');
  }
 }
-let observedTitleDocument=null,titleCanvasResizeObserver=null,titleCanvasMutationObserver=null;
+let observedTitleDocument=null,titleCanvasResizeObserver=null,titleCanvasMutationObserver=null,titleCanvasSettingsFrame=0;
+function scheduleTitleCanvasSettings(){
+ if(titleCanvasSettingsFrame)return;
+ titleCanvasSettingsFrame=requestAnimationFrame(()=>{titleCanvasSettingsFrame=0;applyTitleCanvasSettings()});
+}
 function clearTitleCanvasObservers(){
  titleCanvasResizeObserver?.disconnect();titleCanvasMutationObserver?.disconnect();
- titleCanvasResizeObserver=null;titleCanvasMutationObserver=null;observedTitleDocument=null;
+ if(titleCanvasSettingsFrame)cancelAnimationFrame(titleCanvasSettingsFrame);
+ titleCanvasSettingsFrame=0;titleCanvasResizeObserver=null;titleCanvasMutationObserver=null;observedTitleDocument=null;
 }
 function applyTitleCanvasSettings(){
  if(activeRom){clearTitleCanvasObservers();return}
@@ -1054,10 +1061,10 @@ function applyTitleCanvasSettings(){
   clearTitleCanvasObservers();
   observedTitleDocument=doc;
   if(typeof ResizeObserver==='function'){
-   titleCanvasResizeObserver=new ResizeObserver(applyTitleCanvasSettings);
-   titleCanvasResizeObserver.observe(doc.documentElement);
+   titleCanvasResizeObserver=new ResizeObserver(scheduleTitleCanvasSettings);
+   titleCanvasResizeObserver.observe($('fr'));
   }
-  titleCanvasMutationObserver=new MutationObserver(applyTitleCanvasSettings);
+  titleCanvasMutationObserver=new MutationObserver(scheduleTitleCanvasSettings);
   titleCanvasMutationObserver.observe(doc.documentElement,{attributes:true,attributeFilter:['width','height'],childList:true,subtree:true});
  }
  doc.querySelectorAll('canvas').forEach(canvas=>{
@@ -1078,12 +1085,16 @@ function applyTitleCanvasSettings(){
    const fitWidth=Math.min(availableWidth,availableHeight*ratio),scale=displaySettings.displayScale==='150'?1.5:displaySettings.displayScale==='200'?2:1;
    width=fitWidth*scale;height=fitWidth/ratio*scale;
   }
-  canvas.style.imageRendering=displaySettings.upscaleFilter==='nearest'?'pixelated':'auto';
-  canvas.style.width=Math.round(width)+'px';canvas.style.height=Math.round(height)+'px';
-  canvas.style.display='block';canvas.style.margin='auto';
+  const nextWidth=Math.round(width)+'px',nextHeight=Math.round(height)+'px';
+  const nextRendering=displaySettings.upscaleFilter==='nearest'?'pixelated':'auto';
+  if(canvas.style.imageRendering!==nextRendering)canvas.style.imageRendering=nextRendering;
+  if(canvas.style.width!==nextWidth)canvas.style.width=nextWidth;
+  if(canvas.style.height!==nextHeight)canvas.style.height=nextHeight;
+  if(canvas.style.display!=='block')canvas.style.display='block';
+  if(canvas.style.margin!=='auto')canvas.style.margin='auto';
  });
 }
-window.addEventListener('resize',applyTitleCanvasSettings);
+window.addEventListener('resize',scheduleTitleCanvasSettings);
 document.addEventListener('visibilitychange',()=>{
  if(!activeRom)return;
  const emulator=activeEmulatorInstance();
@@ -1506,7 +1517,16 @@ async function ingestAndLoad(file,source){
  }catch(error){msg('Could not add or open '+file.name+': '+error.message,false,'error')}
 }
 $('f').onchange=e=>{const file=e.target.files[0];e.target.value='';if(file)ingestAndLoad(file,'picker')};
-$('fb').onclick=()=>$('fd').click();
+$('fb').onclick=async()=>{
+ if(!window.showDirectoryPicker){$('fd').click();return}
+ try{
+  const handle=await window.showDirectoryPicker({mode:'read'}),items=await filesFromDirectoryHandle(handle);
+  if(!items.length){msg('The selected folder contains no files.',false,'info');return}
+  const files=items.map(item=>item.file),paths=items.map(item=>item.path),loadId=++loadSequence;
+  await window.__retrotitlesIngestFiles(items,{source:'file-handle',onProgress:reportIngestProgress});
+  if(loadId===loadSequence)await loadFolder(files,paths,loadId);
+ }catch(error){if(error.name!=='AbortError')msg('Could not open folder: '+error.message,false,'error')}
+};
 $('fd').onchange=e=>{
  const files=Array.from(e.target.files),paths=files.map(file=>file.webkitRelativePath||file.name);e.target.value='';
  if(!files.length)return;

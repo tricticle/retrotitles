@@ -106,7 +106,11 @@
   async function writeRecord(record){
    const db=await openDb(),records=await getPathRecords(record.normalizedPath),previous=records.filter(item=>!item.superseded).sort((a,b)=>b.addedAt-a.addedAt)[0];
    if(previous&&previous.addedAt>record.addedAt)return{id:previous.id,duplicate:true,record:previous};
-   if(previous&&previous.size===record.size&&previous.hash&&previous.hash===record.hash)return{id:previous.id,duplicate:true,record:previous};
+   if(previous&&previous.handleRef&&record.handleRef&&previous.size===record.size&&previous.lastModified===record.lastModified&&typeof previous.handleRef.isSameEntry==='function'){
+    try{if(await previous.handleRef.isSameEntry(record.handleRef))return{id:previous.id,duplicate:true,record:previous}}
+    catch(error){window.__retrotitlesLog?.('warn','Could not compare a stored file handle: '+error.message,'file-index')}
+   }
+   if(previous&&record.hash&&previous.size===record.size&&previous.hash&&previous.hash===record.hash)return{id:previous.id,duplicate:true,record:previous};
    if(previous?.blob&&!record.blob&&!record.hash)return{id:previous.id,duplicate:true,record:previous};
    if(previous&&!window.confirm('Replace "'+previous.path+'" with the dropped or selected file?')){
     return{id:previous.id,duplicate:true,replacementDeclined:true,record:previous};
@@ -146,11 +150,11 @@
     const name=path.split('/').pop(),blob=file instanceof Blob?file:null;
     if(!blob&&!input.handleRef)throw new Error('Could not read '+name+'.');
     const record={
-     id:newId(),path,name,size:Number(file.size)||0,type:file.type||'application/octet-stream',
+     id:newId(),path,name,size:Number(file.size)||0,type:file.type||'application/octet-stream',lastModified:Number(file.lastModified)||0,
      source,parentArchiveId,system:systemFor(name),addedAt:Date.now(),normalizedPath:path.toLowerCase(),
      hash:null,blob:input.handleRef?null:blob,handleRef:input.handleRef||null,superseded:false
     };
-    if(blob){
+    if(blob&&!input.handleRef){
      onProgress?.({phase:'hash',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index,total:progressTotal});
      record.hash=await hashBlob(blob,(done,total)=>{
       onProgress?.({phase:'hash',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes+done:index+(total?done/total:1),total:progressTotal});
@@ -164,7 +168,7 @@
     }
     results.push(saved.record);
     completedBytes+=Number(file.size)||0;
-    onProgress?.({phase:'save',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index+1,total:progressTotal});
+    onProgress?.({phase:'save',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index+1,total:progressTotal,direct:Boolean(input.handleRef)});
     if(saved.duplicate||!isArchive(name)||depth>=5)continue;
     if(!extractArchive)continue;
     const extracted=await extractArchive(file);
@@ -293,7 +297,7 @@
     file=await record.handleRef.getFile();
    }
    if(!file)throw new Error('The local data for '+record.name+' is no longer available.');
-   return new File([file],record.name,{type:record.type,lastModified:record.addedAt});
+   return new File([file],record.name,{type:record.type,lastModified:record.lastModified||record.addedAt});
   }
   async function readLibraryState(){
    const stored=await getMetadata('library-state');
@@ -523,7 +527,10 @@
    };
    list.classList.add('lp-file-tree');
    list.replaceChildren(...renderNode(root));
-   status.textContent=files.length+' file'+(files.length===1?'':'s')+' stored locally in this browser; nothing is uploaded.';
+   const linkedCount=files.filter(record=>record.handleRef).length,savedCount=files.length-linkedCount;
+   status.textContent=files.length
+    ?files.length+' files indexed here: '+linkedCount+' linked to device files and '+savedCount+' saved as offline copies. Nothing is uploaded.'
+    :'No files indexed. Add a folder to link device files where supported, or import a local offline copy. Nothing is uploaded.';
   }
   async function deleteSelectedFiles(){
    const ids=Array.from(selectedFileIds);
@@ -637,10 +644,10 @@
     const files=await window.__retrotitlesCompatibility.filesFromDirectoryHandle(handle);
     if(!files.length){status.textContent='The selected folder contains no files.';return}
     const skipped=[];
-    status.textContent='Adding '+files.length+' file'+(files.length===1?'':'s')+' from '+handle.name+'…';
-    await ingestFiles(files,{source:'folder',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)});
-    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Added '+files.length+' file'+(files.length===1?'':'s')+' locally.';
-    msg(skipped.length?'Kept existing files where replacement was declined.':'Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.');
+    status.textContent='Linking '+files.length+' file'+(files.length===1?'':'s')+' from '+handle.name+'…';
+    await ingestFiles(files,{source:'file-handle',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)});
+    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Linked '+files.length+' file'+(files.length===1?'':'s')+' from '+handle.name+' without copying their contents.';
+    msg(skipped.length?'Kept existing files where replacement was declined.':'Linked '+files.length+' files from '+handle.name+' in the unified file view. The browser may ask permission again when you open them.');
    }).catch(error=>{if(error.name!=='AbortError')msg('Could not add folder: '+error.message,false,'error')});
   };
   $('file-refresh').onclick=refreshOnChange;
