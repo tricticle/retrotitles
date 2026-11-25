@@ -1607,6 +1607,8 @@ html, body { background: #090b11; color: #f4f2ff; scroll-behavior: smooth; }
   border-color: rgba(195, 195, 216, .17); background: #1a1d27; color: #eceaf5;
 }
 .lp-button:hover:not(:disabled), .lp-console-toggle:hover, .lp-console-action:hover { border-color: rgba(195, 251, 115, .45); background: #242832; }
+.lp-game-card-actions .lp-game-play:not(:disabled) { border-color: var(--lp-citrus); background: var(--lp-citrus); color: #151a12 !important; font-weight: 750; }
+.lp-game-card-actions .lp-game-play:hover:not(:disabled) { border-color: #d5ff9b; background: #d5ff9b; color: #151a12 !important; }
 .lp-button:focus-visible, .lp-primary:focus-visible, .lp-console-toggle:focus-visible, .lp-console-action:focus-visible, .lp-settings-open:focus-visible, .lp-tab:focus-visible, .lp-settings-close:focus-visible, .lp-inline-link:focus-visible { outline: 3px solid rgba(195, 251, 115, .72); outline-offset: 3px; }
 .lp-console-copy { border-color: var(--lp-citrus); background: var(--lp-citrus); color: #151a12 !important; }
 .lp-library { border-color: rgba(195, 195, 216, .14); }
@@ -1679,4 +1681,58 @@ html, body { background: #090b11; color: #f4f2ff; scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   html, body { scroll-behavior: auto; }
   .lp-game-card, .lp-game-card:hover { transform: none; }
+}
+
+@keyframes lp-game-card-enter {
+  from { opacity: 0; transform: translateY(7px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.lp-game-card { animation: lp-game-card-enter .24s cubic-bezier(.2,.7,.3,1) both; }
+.lp-game-card:nth-child(2) { animation-delay: 24ms; }
+.lp-game-card:nth-child(3) { animation-delay: 48ms; }
+.lp-game-card:nth-child(4) { animation-delay: 72ms; }
+.lp-game-card:nth-child(n+5) { animation-delay: 90ms; }
+.lp-button svg, .lp-console-toggle svg, .lp-settings-open svg { transition: transform .18s ease, color .18s ease; }
+.lp-button:hover:not(:disabled) svg { transform: translateY(-1px); }
+.lp-game-cover { position: relative; overflow: hidden; }
+.lp-game-cover-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.lp-game-cover.has-cover { background: #11131b; }
+.lp-game-cover.has-cover > span { display: none; }
+.lp-game-card-tags { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.lp-game-card-tag { display: inline-flex; max-width: 100%; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid rgba(195,195,216,.12); border-radius: 999px; background: rgba(183,154,255,.08); color: #d3c7f1; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+.lp-game-card-tag.is-collection { border-color: rgba(195,251,115,.16); background: rgba(195,251,115,.08); color: #d7f6af; }
+.lp-game-grid[data-view="list"] .lp-game-card-tags { display: none; }
+.lp-library-filters #library-collection-filters { flex-basis: 100%; }
+.lp-profile-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 12px; }
+.lp-profile-controls > label { display: grid; gap: 5px; color: #b9b8c8; font-size: 11px; }
+.lp-profile-controls select { min-width: 190px; min-height: 42px; padding: 0 10px; border: 1px solid rgba(195,195,216,.18); border-radius: 9px; background: #11141c; color: #f0eef9; font: inherit; }
+.lp-profile-controls .lp-button { min-height: 42px; }
+.lp-mapping-heading > label { display: grid; gap: 4px; color: #b9b8c8; font-size: 11px; }
+.lp-mapping-heading > label select { min-width: 210px; }
+.lp-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.lp-backup-actions .lp-button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+.lp-backup-actions svg { width: 16px; height: 16px; }
+.lp-game-details-dialog .lp-settings-content { gap: 14px; }
+.lp-game-details-dialog .lp-setting-row { gap: 14px; }
+.lp-game-details-dialog .lp-setting-row input[type="text"] { width: min(390px, 58%); min-width: 150px; }
+.lp-game-details-dialog .lp-setting-row input[type="file"] { max-width: min(390px, 58%); min-width: 150px; font-size: 11px; }
+.lp-game-details-cover-preview { display: block; width: 120px; max-height: 150px; margin: 12px 0; object-fit: cover; border: 1px solid #343746; border-radius: 12px; }
+.lp-game-details-cover-preview[hidden] { display: none; }
+.lp-details-save { border-color: rgba(195,251,115,.3); background: rgba(195,251,115,.1); color: #e0ffba; }
+#game-details-close { border: 0; }
+#game-details-close svg { width: 20px; height: 20px; }
+#backup-status { min-height: 20px; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .lp-mapping-heading { align-items: flex-start !important; flex-direction: column; }
+  .lp-mapping-heading > label, .lp-mapping-heading > label select { width: 100%; }
+  .lp-profile-controls { align-items: stretch; flex-direction: column; }
+  .lp-profile-controls > label, .lp-profile-controls select { width: 100%; }
+  .lp-profile-controls .lp-button { align-self: flex-start; }
+  .lp-game-details-dialog .lp-setting-row { align-items: flex-start; flex-direction: column; }
+  .lp-game-details-dialog .lp-setting-row input[type="text"], .lp-game-details-dialog .lp-setting-row input[type="file"] { width: 100%; max-width: 100%; }
+  .lp-backup-actions .lp-button { flex: 1 1 auto; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-game-card { animation: none; }
+  .lp-button svg, .lp-console-toggle svg, .lp-settings-open svg { transition: none; }
 }

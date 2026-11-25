@@ -499,7 +499,7 @@ const CTRL_FN=function(scope,fallbackScope,configuredMap,configuredLayout){
  function createControls(){
   if(window.__grc)return;window.__grc=true;
   var SP={ArrowUp:[38,'ArrowUp','ArrowUp'],ArrowDown:[40,'ArrowDown','ArrowDown'],ArrowLeft:[37,'ArrowLeft','ArrowLeft'],ArrowRight:[39,'ArrowRight','ArrowRight'],Space:[32,'Space',' '],Enter:[13,'Enter','Enter'],Shift:[16,'ShiftLeft','Shift'],Control:[17,'ControlLeft','Control'],Escape:[27,'Escape','Escape'],Tab:[9,'Tab','Tab']};
-  var NAMES=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
+  var NAMES=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','I','J','K','L','U','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
   var ACT=[['up','Up'],['down','Down'],['left','Left'],['right','Right'],['a','A'],['b','B'],['x','X'],['y','Y'],['start','Start']];
   var DEF={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'};
   var map={},k;for(k in DEF)map[k]=DEF[k];
@@ -745,7 +745,13 @@ function cancelCurrentLoad(){
 }
 function setLoadedTitle(title,size=''){$('title-name').textContent=title||'Local title';$('title-size').textContent=size}
 const controlActions=[['up','Up'],['down','Down'],['left','Left'],['right','Right'],['a','A'],['b','B'],['x','X'],['y','Y'],['start','Start']];
-const controlKeyNames=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
+const controlKeyNames=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','I','J','K','L','U','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
+const defaultControlMapping={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'};
+const keyboardProfiles={
+ arrows:{...defaultControlMapping},
+ wasd:{up:'W',down:'S',left:'A',right:'D',a:'K',b:'J',x:'U',y:'I',start:'Enter'},
+ ijkl:{up:'I',down:'K',left:'J',right:'L',a:'Z',b:'X',x:'A',y:'S',start:'Enter'}
+};
 let controlMappings=readStoredObject('retrotitles-control-mappings',{});
 let controlLayouts=readStoredObject('retrotitles-touch-layouts',{});
 if(!controlMappings.default){
@@ -791,22 +797,23 @@ function renderControllerStatus(){
  }
 }
 function renderKeyboardMappings(){
- const systemSelect=$('controls-system'),scope=controlScope(),systemMap=controlMappings[controlsSystem]||{},gameMap=controlsRecord?controlMappings[scope]||{}:{};
- const mappings={...(controlMappings.default||{}),...systemMap,...gameMap},container=$('keyboard-mapping-list');
+ const systemSelect=$('controls-system'),profileSelect=$('controls-profile'),scope=controlScope(),systemMap=controlMappings[controlsSystem]||{},gameMap=controlsRecord?controlMappings[scope]||{}:{},mappings={...(controlMappings.default||{}),...systemMap,...gameMap},container=$('keyboard-mapping-list');
  systemSelect.value=controlsSystem;systemSelect.disabled=Boolean(controlsRecord);
  $('controls-scope-note').textContent=controlsRecord
   ?'Per-game overrides for '+(controlsRecord.name||controlsRecord.path)+'; saved separately from system defaults.'+(controlsRecord.system?' EmulatorJS input bindings for this system remain in its in-game menu.':'')
   :'Mappings are saved per system and apply to supported browser titles.';
+ const matchingProfile=Object.entries(keyboardProfiles).find(([,profile])=>controlActions.every(([action])=>(mappings[action]||defaultControlMapping[action])===profile[action]));
+ profileSelect.value=matchingProfile?.[0]||'custom';profileSelect.disabled=Boolean(controlsRecord?.system);$('controls-reset').disabled=Boolean(controlsRecord?.system);
  container.replaceChildren(...controlActions.map(([action,label])=>{
   const row=document.createElement('label');row.className='lp-mapping-row';
   const title=document.createElement('span');title.textContent=label;
   const select=document.createElement('select');select.setAttribute('aria-label',label+' keyboard key');
   controlKeyNames.forEach(key=>select.add(new Option(key,key)));
-  select.value=mappings[action]||({up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'})[action];
+  select.value=mappings[action]||defaultControlMapping[action];
   select.disabled=Boolean(controlsRecord?.system);
   select.addEventListener('change',()=>{
    const current=controlMappings[scope]||{};
-   controlMappings[scope]={...current,[action]:select.value};
+   controlMappings[scope]={...current,[action]:select.value};profileSelect.value='custom';
    if(writeStoredValue('retrotitles-control-mappings',JSON.stringify(controlMappings)))msg('Saved '+label+' mapping for '+(controlsRecord?.name||controlsSystem)+'.');
   });
   row.append(title,select);return row;
@@ -817,6 +824,15 @@ function renderKeyboardMappings(){
 Array.from($('core-select').options).filter(option=>option.value).forEach(option=>$('controls-system').add(new Option(option.textContent,option.value)));
 $('controls-system').addEventListener('change',()=>{
  controlsSystem=$('controls-system').value||'default';controlsRecord=null;renderKeyboardMappings();
+});
+$('controls-profile').addEventListener('change',()=>{
+ const preset=keyboardProfiles[$('controls-profile').value];if(!preset)return;
+ const scope=controlScope();controlMappings[scope]={...preset};
+ if(writeStoredValue('retrotitles-control-mappings',JSON.stringify(controlMappings))){renderKeyboardMappings();msg('Applied the '+$('controls-profile').selectedOptions[0].textContent+' preset.');}
+});
+$('controls-reset').addEventListener('click',()=>{
+ const scope=controlScope();controlMappings[scope]={...defaultControlMapping};
+ if(writeStoredValue('retrotitles-control-mappings',JSON.stringify(controlMappings))){renderKeyboardMappings();msg('Reset keyboard mappings to the default preset.');}
 });
 $('touch-controls-toggle').checked=touchControlsEnabled;
 $('touch-controls-toggle').addEventListener('change',()=>{

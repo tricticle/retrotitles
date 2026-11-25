@@ -1,10 +1,12 @@
 // The game-file endpoint stays client-streamed; app/runtime assets are cached for offline use.
-const SHELL_CACHE = 'retrotitles-shell-v3';
+const SHELL_CACHE = 'retrotitles-shell-v4';
 const RUNTIME_CACHE = 'retrotitles-runtime-v4.2.3';
 const SHELL_FILES = [
   './',
   './index.html',
   './launcher.css',
+  './icons.js',
+  './backup-manager.js',
   './compatibility.js',
   './save-manager.js',
   './file-manager.js',
