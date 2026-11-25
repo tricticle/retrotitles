@@ -1485,3 +1485,39 @@ html, body { background: #101116; }
 @media (prefers-reduced-motion: reduce) {
   .lp-game-card, .lp-game-card:hover { transform: none; }
 }
+
+.lp-loaded-actions { align-items: center; }
+#play-touch-toggle[aria-pressed="true"], #ctl[aria-pressed="true"] {
+  border-color: #9b84e6; background: #39304f; color: #f4edff;
+}
+#play-touch-toggle[hidden] { display: none; }
+.lp-controls-panel .lp-settings-group {
+  border-color: #393743; background: linear-gradient(145deg, #1d1d27, #191a22);
+}
+.lp-controls-panel .lp-group-heading { align-items: center; }
+.lp-controls-panel .lp-mapping-row { min-height: 56px; }
+.lp-controls-panel .lp-mapping-row select { min-width: 150px; }
+.lp-touch-preview {
+  display: flex; min-height: 118px; align-items: center; justify-content: space-between;
+  gap: 22px; margin-block: 12px 16px; padding: 14px 18px;
+  border: 1px solid #3b3847; border-radius: 14px;
+  background: radial-gradient(ellipse at 50% 50%, rgba(164, 136, 239, .12), transparent 70%), #14151c;
+}
+.lp-touch-preview-pad { display: grid; grid-template: repeat(3, 34px) / repeat(3, 34px); gap: 4px; }
+.lp-touch-preview-pad span, .lp-touch-preview-actions span {
+  display: grid; width: 34px; height: 34px; place-items: center;
+  border: 1px solid #534a69; border-radius: 10px; background: #292637;
+  color: #e9e1ff; font-size: 12px; font-weight: 750;
+}
+.lp-touch-preview-pad span:nth-child(1) { grid-column: 2; grid-row: 1; }
+.lp-touch-preview-pad span:nth-child(2) { grid-column: 1; grid-row: 2; }
+.lp-touch-preview-pad span:nth-child(3) { grid-column: 2; grid-row: 2; color: #b8a2ff; }
+.lp-touch-preview-pad span:nth-child(4) { grid-column: 3; grid-row: 2; }
+.lp-touch-preview-pad span:nth-child(5) { grid-column: 2; grid-row: 3; }
+.lp-touch-preview-actions { display: grid; grid-template-columns: repeat(2, 42px); gap: 8px; }
+.lp-touch-preview-actions span { width: 42px; height: 42px; border-radius: 50%; border-color: #645487; background: #332b43; }
+@media (max-width: 640px) {
+  .lp-loaded-actions #play-touch-toggle { flex: 1 1 100%; }
+  .lp-touch-preview { justify-content: space-around; }
+  .lp-controls-panel .lp-mapping-row select { width: 100%; }
+}

@@ -493,73 +493,103 @@ async function build(z,loadId=loadSequence){const names=Object.keys(z.files).fil
 }
 
 const CTRL_FN=function(scope,fallbackScope,configuredMap){
- if(window.__grcLoader)return;window.__grcLoader=1;
+ if(window.__grcLoader)return;window.__grcLoader=true;
  function createControls(){
- if(window.__grc)return;window.__grc=1;
- var SP={ArrowUp:[38,'ArrowUp','ArrowUp'],ArrowDown:[40,'ArrowDown','ArrowDown'],ArrowLeft:[37,'ArrowLeft','ArrowLeft'],ArrowRight:[39,'ArrowRight','ArrowRight'],Space:[32,'Space',' '],Enter:[13,'Enter','Enter'],Shift:[16,'ShiftLeft','Shift'],Control:[17,'ControlLeft','Control'],Escape:[27,'Escape','Escape'],Tab:[9,'Tab','Tab']};
- var NAMES=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
- var ACT=[['up','Up'],['down','Down'],['left','Left'],['right','Right'],['a','A'],['b','B'],['x','X'],['y','Y'],['start','Start']];
- var DEF={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'};
- var map={},k;for(k in DEF)map[k]=DEF[k];
- var scopeName=scope||'default',savedMaps={},sv=configuredMap||null;
- if(!sv){
-  try{savedMaps=JSON.parse(localStorage.getItem('retrotitles-control-mappings')||'{}')||{}}catch(e){console.warn('Could not read control mappings:',e)}
-  sv=savedMaps[scopeName]||savedMaps[fallbackScope||'']||savedMaps.default||null;
-  if(!sv)try{sv=JSON.parse(localStorage.getItem('gr-keys'))}catch(e){console.warn('Could not read legacy control mappings:',e)}
- }
- if(sv)for(k in sv)if(map[k]&&NAMES.indexOf(sv[k])>-1)map[k]=sv[k];
- function save(){
-  savedMaps[scopeName]=map;
-  try{
-   if(scopeName==='default')localStorage.setItem('gr-keys',JSON.stringify(map));
-   localStorage.setItem('retrotitles-control-mappings',JSON.stringify(savedMaps));
-  }catch(e){parent.postMessage({type:'rt-controls-save',scope:scopeName,mapping:map},'*')}
- }
- function spec(n){if(SP[n])return{keyCode:SP[n][0],code:SP[n][1],key:SP[n][2]};if(/^[0-9]$/.test(n))return{keyCode:n.charCodeAt(0),code:'Digit'+n,key:n};return{keyCode:n.charCodeAt(0),code:'Key'+n,key:n.toLowerCase()}}
- function target(){var a=document.activeElement;if(a&&a!==document.body&&a!==document.documentElement)return a;return document.querySelector('canvas,ruffle-player,ruffle-embed')||document}
- function fire(type,n){var s=spec(n);var e=new KeyboardEvent(type,{key:s.key,code:s.code,bubbles:true,cancelable:true});['keyCode','which'].forEach(function(p){try{Object.defineProperty(e,p,{get:function(){return s.keyCode}})}catch(x){}});target().dispatchEvent(e)}
- var down={};
- function press(a){if(down[a])return;down[a]=map[a];fire('keydown',map[a])}
- function release(a){if(down[a]){var n=down[a];delete down[a];fire('keyup',n)}}
- var st=document.createElement('style');
- st.textContent='#grc{position:fixed;inset:0;z-index:2147483647;pointer-events:none;display:none;font:600 15px system-ui,sans-serif;user-select:none;-webkit-user-select:none}#grc *{box-sizing:border-box;touch-action:none}.grb{position:absolute;pointer-events:auto;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.55);color:#fff;display:flex;align-items:center;justify-content:center;text-shadow:0 1px 2px #000;box-shadow:0 0 0 1px rgba(0,0,0,.35)}.grb.on{background:rgba(255,255,255,.5)}#grp{position:absolute;pointer-events:auto;left:50%;top:50%;transform:translate(-50%,-50%);background:#222;color:#eee;border-radius:12px;padding:14px;width:min(320px,92vw);max-height:90%;overflow:auto;display:none}#grp,#grp *{touch-action:auto}#grp label{display:flex;justify-content:space-between;align-items:center;margin:6px 0}#grp select,#grp button{font:inherit;background:#444;color:#fff;border:1px solid #666;border-radius:6px;padding:4px 8px}';
- document.head.appendChild(st);
- var root=document.createElement('div');root.id='grc';
- function bot(n){return 'bottom:calc('+n+'px + env(safe-area-inset-bottom,0px));'}
- function box(css,txt){var d=document.createElement('div');d.className='grb';d.style.cssText=css;if(txt)d.textContent=txt;root.appendChild(d);return d}
- var base=box('left:20px;'+bot(24)+'width:130px;height:130px;');
- var knob=document.createElement('div');knob.style.cssText='position:absolute;left:40px;top:40px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.55);pointer-events:none';base.appendChild(knob);
- var R=65;
- function mv(ev){var r=base.getBoundingClientRect();var dx=ev.clientX-(r.left+R),dy=ev.clientY-(r.top+R);var d=Math.sqrt(dx*dx+dy*dy);if(d>R){dx*=R/d;dy*=R/d}knob.style.left=(40+dx*0.6)+'px';knob.style.top=(40+dy*0.6)+'px';var t=R*0.3;
-  if(dx<-t)press('left');else release('left');if(dx>t)press('right');else release('right');if(dy<-t)press('up');else release('up');if(dy>t)press('down');else release('down')}
- function end(){['up','down','left','right'].forEach(release);knob.style.left='40px';knob.style.top='40px'}
- base.addEventListener('pointerdown',function(e){e.preventDefault();base.setPointerCapture(e.pointerId);mv(e)});
- base.addEventListener('pointermove',function(e){if(base.hasPointerCapture(e.pointerId))mv(e)});
- base.addEventListener('pointerup',end);base.addEventListener('pointercancel',end);
- function btn(a,label,css){var b=box(css,label);
-  b.addEventListener('pointerdown',function(e){e.preventDefault();b.setPointerCapture(e.pointerId);b.classList.add('on');press(a)});
-  var up=function(){b.classList.remove('on');release(a)};b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up)}
- var sz='width:54px;height:54px;';
- btn('a','A','right:20px;'+bot(74)+sz);
- btn('b','B','right:75px;'+bot(24)+sz);
- btn('x','X','right:75px;'+bot(124)+sz);
- btn('y','Y','right:130px;'+bot(74)+sz);
- btn('start','START','left:50%;margin-left:-32px;'+bot(24)+'width:64px;height:32px;border-radius:16px;font-size:11px;');
- var pn=document.createElement('div');pn.id='grp';root.appendChild(pn);
- function build(){pn.innerHTML='';var h=document.createElement('div');h.textContent='Key mapping';h.style.cssText='font-weight:700;margin-bottom:6px';pn.appendChild(h);
-  ACT.forEach(function(p){var l=document.createElement('label');l.textContent=p[1];var s=document.createElement('select');NAMES.forEach(function(n){var o=document.createElement('option');o.value=o.textContent=n;if(map[p[0]]===n)o.selected=true;s.appendChild(o)});s.onchange=function(){release(p[0]);map[p[0]]=s.value;save()};l.appendChild(s);pn.appendChild(l)});
-  var r=document.createElement('button');r.textContent='Reset';r.onclick=function(){for(var q in DEF)map[q]=DEF[q];save();build()};
-  var c=document.createElement('button');c.textContent='Close';c.style.marginLeft='8px';c.onclick=function(){pn.style.display='none'};pn.appendChild(r);pn.appendChild(c)}
- var gear=box('right:10px;top:calc(10px + env(safe-area-inset-top,0px));width:38px;height:38px;opacity:.7','\u2699');
- gear.addEventListener('click',function(){build();pn.style.display='block'});
- document.body.appendChild(root);
- function vis(v){root.style.display=v?'block':'none';if(!v)end()}
- root.__grToggle=function(){vis(root.style.display==='none')};
- root.__grShow=function(){vis(true)};
- root.__grHide=function(){vis(false)};
- vis(true);
+  if(window.__grc)return;window.__grc=true;
+  var SP={ArrowUp:[38,'ArrowUp','ArrowUp'],ArrowDown:[40,'ArrowDown','ArrowDown'],ArrowLeft:[37,'ArrowLeft','ArrowLeft'],ArrowRight:[39,'ArrowRight','ArrowRight'],Space:[32,'Space',' '],Enter:[13,'Enter','Enter'],Shift:[16,'ShiftLeft','Shift'],Control:[17,'ControlLeft','Control'],Escape:[27,'Escape','Escape'],Tab:[9,'Tab','Tab']};
+  var NAMES=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
+  var ACT=[['up','Up'],['down','Down'],['left','Left'],['right','Right'],['a','A'],['b','B'],['x','X'],['y','Y'],['start','Start']];
+  var DEF={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'};
+  var map={},k;for(k in DEF)map[k]=DEF[k];
+  var scopeName=scope||'default',savedMaps={},sv=configuredMap||null;
+  if(!sv){
+   try{savedMaps=JSON.parse(localStorage.getItem('retrotitles-control-mappings')||'{}')||{}}catch(e){console.warn('Could not read control mappings:',e)}
+   sv=savedMaps[scopeName]||savedMaps[fallbackScope||'']||savedMaps.default||null;
+   if(!sv)try{sv=JSON.parse(localStorage.getItem('gr-keys'))}catch(e){console.warn('Could not read legacy control mappings:',e)}
+  }
+  if(sv)for(k in sv)if(map[k]&&NAMES.indexOf(sv[k])>-1)map[k]=sv[k];
+  function save(){
+   savedMaps[scopeName]=map;
+   try{
+    if(scopeName==='default')localStorage.setItem('gr-keys',JSON.stringify(map));
+    localStorage.setItem('retrotitles-control-mappings',JSON.stringify(savedMaps));
+   }catch(e){parent.postMessage({type:'rt-controls-save',scope:scopeName,mapping:map},'*')}
+  }
+  function spec(n){if(SP[n])return{keyCode:SP[n][0],code:SP[n][1],key:SP[n][2]};if(/^[0-9]$/.test(n))return{keyCode:n.charCodeAt(0),code:'Digit'+n,key:n};return{keyCode:n.charCodeAt(0),code:'Key'+n,key:n.toLowerCase()}}
+  function target(){var a=document.activeElement;if(a&&a!==document.body&&a!==document.documentElement)return a;return document.querySelector('canvas,ruffle-player,ruffle-embed')||document}
+  function fire(type,n){var s=spec(n),e=new KeyboardEvent(type,{key:s.key,code:s.code,bubbles:true,cancelable:true});['keyCode','which'].forEach(function(p){try{Object.defineProperty(e,p,{get:function(){return s.keyCode}})}catch(x){}});target().dispatchEvent(e)}
+  var down={},actionPresses={},keyPresses={},pointerActions=new Map();
+  function press(a){
+   var key=map[a];if(!key)return;
+   actionPresses[a]=(actionPresses[a]||0)+1;
+   if(actionPresses[a]>1)return;
+   down[a]=key;var count=keyPresses[key]||0;keyPresses[key]=count+1;if(!count)fire('keydown',key);
+  }
+  function release(a){
+   if(!actionPresses[a])return;
+   if(actionPresses[a]>1){actionPresses[a]--;return}
+   delete actionPresses[a];var key=down[a];delete down[a];var count=keyPresses[key]||0;
+   if(count<=1){delete keyPresses[key];fire('keyup',key)}else keyPresses[key]=count-1;
+  }
+  function setPointerActions(id,actions){
+   var next=new Set(actions),previous=pointerActions.get(id)||new Set();
+   previous.forEach(function(action){if(!next.has(action))release(action)});
+   next.forEach(function(action){if(!previous.has(action))press(action)});
+   if(next.size)pointerActions.set(id,next);else pointerActions.delete(id);
+  }
+  function releasePointer(id){setPointerActions(id,[])}
+  function releaseAll(){
+   pointerActions.forEach(function(actions,id){releasePointer(id)});
+   Object.keys(actionPresses).forEach(function(action){actionPresses[action]=1;release(action)});
+  }
+  function bot(n){return 'bottom:calc('+n+'px + env(safe-area-inset-bottom,0px));'}
+  var st=document.createElement('style');
+  st.textContent='#grc{--grc-size:clamp(48px,15vw,62px);position:fixed;inset:0;z-index:2147483647;pointer-events:none;display:none;font:700 14px system-ui,sans-serif;user-select:none;-webkit-user-select:none}#grc *{box-sizing:border-box;touch-action:none}.grb{position:absolute;display:flex;align-items:center;justify-content:center;pointer-events:auto;border:1px solid rgba(236,228,255,.72);border-radius:50%;background:rgba(25,23,34,.78);color:#fbf8ff;font:inherit;text-shadow:0 1px 2px #000;box-shadow:0 5px 18px rgba(0,0,0,.38),inset 0 0 0 1px rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);-webkit-tap-highlight-color:transparent}.grb.on,.grb:active{background:rgba(168,141,245,.88);color:#17121f;transform:scale(.96)}.grb:focus-visible{outline:3px solid #c4adff;outline-offset:3px}.grdpad{left:max(14px,env(safe-area-inset-left,0px));'+bot(18)+'width:clamp(116px,35vw,148px);height:clamp(116px,35vw,148px);border-color:rgba(236,228,255,.48);background:radial-gradient(circle,#8170a7 0 12%,#41394f 13% 30%,rgba(33,31,43,.82) 31% 100%);touch-action:none}.grdpad-knob{position:absolute;left:50%;top:50%;width:38%;height:38%;transform:translate(-50%,-50%);border:1px solid rgba(255,255,255,.75);border-radius:50%;background:linear-gradient(145deg,#c4afff,#8870cb);box-shadow:0 3px 12px rgba(0,0,0,.45);pointer-events:none}.grbutton{width:var(--grc-size);height:var(--grc-size);font-size:15px}.grbutton[data-action="start"]{left:50%;'+bot(18)+'width:68px;height:34px;transform:translateX(-50%);border-radius:999px;font-size:10px;letter-spacing:.06em}.grbutton[data-action="a"]{right:max(14px,env(safe-area-inset-right,0px));'+bot(18+62)+'}.grbutton[data-action="b"]{right:calc(var(--grc-size) + 24px);'+bot(18)+'}.grbutton[data-action="x"]{right:calc(var(--grc-size) + 24px);bottom:calc(18px + var(--grc-size,62px) + env(safe-area-inset-bottom,0px));}.grbutton[data-action="y"]{right:calc(var(--grc-size) * 2 + 34px);bottom:calc(18px + var(--grc-size,62px) * .52 + env(safe-area-inset-bottom,0px));}#grp{position:absolute;right:12px;top:calc(58px + env(safe-area-inset-top,0px));width:min(320px,calc(100vw - 24px));max-height:min(70vh,520px);overflow:auto;padding:16px;border:1px solid #53476e;border-radius:16px;background:#191720;color:#f4efff;box-shadow:0 18px 48px rgba(0,0,0,.52);pointer-events:auto;display:none}#grp,#grp *{touch-action:auto}#grp [data-title]{margin:0 0 12px;font-size:14px}#grp label{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:44px;margin:0;border-top:1px solid #383442;font-size:12px}#grp select,#grp button{min-height:40px;padding:0 10px;border:1px solid #50485e;border-radius:9px;background:#272430;color:#f8f5ff;font:inherit}#grp button:focus-visible,#grp select:focus-visible{outline:3px solid #b8a2ff;outline-offset:2px}#grp .gr-actions{display:flex;gap:8px;margin-top:12px}#grp .gr-actions button{flex:1}';
+  document.head.appendChild(st);
+  var root=document.createElement('div');root.id='grc';root.setAttribute('role','group');root.setAttribute('aria-label','Touch game controls');
+  function box(css,txt,tag){var d=document.createElement(tag||'div');d.className='grb';d.style.cssText=css;if(d.tagName==='BUTTON')d.type='button';if(txt)d.textContent=txt;root.appendChild(d);return d}
+  var base=box('','','div');base.className='grb grdpad';base.setAttribute('role','group');base.setAttribute('aria-label','Directional pad');base.tabIndex=0;
+  var knob=document.createElement('div');knob.className='grdpad-knob';knob.setAttribute('aria-hidden','true');base.appendChild(knob);
+  function mv(ev){var rect=base.getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2,dx=ev.clientX-cx,dy=ev.clientY-cy,radius=rect.width*.48,distance=Math.hypot(dx,dy);if(distance>radius){dx*=radius/distance;dy*=radius/distance}knob.style.left='calc(50% + '+(dx*.44)+'px)';knob.style.top='calc(50% + '+(dy*.44)+'px)';var threshold=radius*.36,actions=[];if(dx<-threshold)actions.push('left');if(dx>threshold)actions.push('right');if(dy<-threshold)actions.push('up');if(dy>threshold)actions.push('down');setPointerActions(ev.pointerId,actions)}
+  function endPad(ev){releasePointer(ev.pointerId);knob.style.left='50%';knob.style.top='50%'}
+  base.addEventListener('pointerdown',function(e){e.preventDefault();try{base.setPointerCapture(e.pointerId)}catch(error){}mv(e)});
+  base.addEventListener('pointermove',function(e){if(base.hasPointerCapture(e.pointerId))mv(e)});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(type){base.addEventListener(type,endPad)});
+  var keyActions={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
+  base.addEventListener('keydown',function(e){var action=keyActions[e.key];if(action){e.preventDefault();if(!e.repeat)press(action)}});
+  base.addEventListener('keyup',function(e){var action=keyActions[e.key];if(action){e.preventDefault();release(action)}});
+  function btn(action,label,css){
+   var button=box(css,label,'button');button.classList.add('grbutton');button.dataset.action=action;button.setAttribute('aria-label',label==='START'?'Start':label+' button');
+   button.addEventListener('pointerdown',function(e){e.preventDefault();try{button.setPointerCapture(e.pointerId)}catch(error){}button.classList.add('on');setPointerActions(e.pointerId,[action])});
+   var finish=function(e){button.classList.remove('on');releasePointer(e.pointerId)};
+   ['pointerup','pointercancel','lostpointercapture'].forEach(function(type){button.addEventListener(type,finish)});
+   button.addEventListener('keydown',function(e){if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();press(action)}});
+   button.addEventListener('keyup',function(e){if(e.key===' '||e.key==='Enter'){e.preventDefault();release(action)}});
+   button.addEventListener('blur',function(){release(action)});
+  }
+  btn('a','A','right:max(14px,env(safe-area-inset-right,0px));'+bot(80));
+  btn('b','B','right:calc(var(--grc-size) + 24px);'+bot(18));
+  btn('x','X','right:calc(var(--grc-size) + 24px);'+bot(18+62));
+  btn('y','Y','right:calc(var(--grc-size) * 2 + 34px);'+bot(18+31));
+  btn('start','START','');
+  var pn=document.createElement('section');pn.id='grp';pn.setAttribute('role','dialog');pn.setAttribute('aria-labelledby','gr-title');pn.setAttribute('aria-modal','false');root.appendChild(pn);
+  function closeSettings(){pn.style.display='none';gear.focus()}
+  function build(){
+   pn.replaceChildren();var heading=document.createElement('h2');heading.id='gr-title';heading.dataset.title='true';heading.textContent='Control mapping';pn.appendChild(heading);
+   ACT.forEach(function(pair){var label=document.createElement('label'),caption=document.createElement('span'),select=document.createElement('select');caption.textContent=pair[1];select.setAttribute('aria-label',pair[1]+' keyboard key');NAMES.forEach(function(key){var option=document.createElement('option');option.value=key;option.textContent=key;if(map[pair[0]]===key)option.selected=true;select.appendChild(option)});select.addEventListener('change',function(){release(pair[0]);map[pair[0]]=select.value;save()});label.append(caption,select);pn.appendChild(label)});
+   var actions=document.createElement('div');actions.className='gr-actions';var reset=document.createElement('button'),close=document.createElement('button');reset.type=close.type='button';reset.textContent='Reset';close.textContent='Close';reset.addEventListener('click',function(){releaseAll();for(var action in DEF)map[action]=DEF[action];save();build()});close.addEventListener('click',closeSettings);actions.append(reset,close);pn.appendChild(actions);
+  }
+  var gear=box('right:12px;top:calc(12px + env(safe-area-inset-top,0px));width:42px;height:42px;opacity:.92','Settings','button');gear.classList.add('grbutton');gear.style.borderRadius='12px';gear.setAttribute('aria-label','Touch control settings');
+  gear.addEventListener('click',function(){build();pn.style.display='block';pn.querySelector('select')?.focus()});
+  document.body.appendChild(root);
+  function vis(visible){root.style.display=visible?'block':'none';root.setAttribute('aria-hidden',String(!visible));if(!visible){releaseAll();knob.style.left='50%';knob.style.top='50%';if(pn)pn.style.display='none'}}
+  root.__grToggle=function(){vis(root.style.display==='none')};root.__grShow=function(){vis(true)};root.__grHide=function(){vis(false)};
+  vis(true);
+  window.addEventListener('blur',releaseAll);document.addEventListener('visibilitychange',function(){if(document.hidden)releaseAll()});window.addEventListener('pagehide',releaseAll);
+  root.addEventListener('contextmenu',function(e){e.preventDefault()});
  }
  addEventListener('message',function(e){
+  if(e.source!==parent)return;
   if(e.data!=='gr-toggle'&&e.data!=='gr-show'&&e.data!=='gr-hide')return;
   if(!window.__grc){createControls();if(e.data==='gr-hide')document.getElementById('grc')?.__grHide?.();return}
   var root=document.getElementById('grc');
@@ -567,6 +597,7 @@ const CTRL_FN=function(scope,fallbackScope,configuredMap){
   else if(root&&e.data==='gr-hide'&&root.__grHide)root.__grHide();
   else if(root&&root.__grToggle)root.__grToggle();
  });
+ parent.postMessage({type:'rt-controls-ready'},'*');
 };
 const PLAYER_LOG_FN=function(){
  const format=value=>{
@@ -654,7 +685,9 @@ const readFileText=async(file,loadId,stage)=>new TextDecoder().decode(await read
 const gameObjectUrls=new Set();
 function createGameObjectURL(blob){const url=URL.createObjectURL(blob);gameObjectUrls.add(url);return url}
 function cleanupGame(){
- try{$('fr').contentWindow?.__rtCleanup?.()}catch(error){window.__retrotitlesLog?.('warn','Could not clean up the previous emulator: '+error.message,'runtime')}
+ if(activeRom){
+  try{$('fr').contentWindow?.__rtCleanup?.()}catch(error){window.__retrotitlesLog?.('warn','Could not clean up the previous emulator: '+error.message,'runtime')}
+ }
  clearTitleCanvasObservers();
  gameObjectUrls.forEach(url=>URL.revokeObjectURL(url));gameObjectUrls.clear();
  activeRom=null;activeGameRecord=null;streamUrl=null;provider=null;providerId=null;
@@ -683,19 +716,19 @@ function setTouchControlsPreference(enabled,applyToCurrent=true){
  $('touch-controls-toggle').checked=touchControlsEnabled;
  $('game-touch-controls').checked=touchControlsEnabled;
  writeStoredValue('retrotitles-touch-controls',String(touchControlsEnabled));
- if(!applyToCurrent||$('stage').style.display==='none')return;
+ if(!applyToCurrent||$('stage').style.display==='none'){syncPlayTouchButton(touchControlsEnabled);return}
  const emulator=activeEmulatorInstance();
  if(emulator){
   try{
    emulator.changeSettingOption('virtual-gamepad',touchControlsEnabled?'enabled':'disabled');
    emulator.saveSettings?.();
   }catch(error){msg('Could not update touch controls: '+error.message,false,'error')}
-  return;
+  syncGameSettings();return;
  }
  if(customControlsAvailable){
   setTouchControlsActive(touchControlsEnabled);
-  $('fr').contentWindow.postMessage(touchControlsEnabled?'gr-show':'gr-hide','*');
- }
+  $('fr').contentWindow?.postMessage(touchControlsEnabled?'gr-show':'gr-hide','*');
+ }else syncGameSettings();
 }
 function controlScope(){return controlsRecord?'game:'+controlsRecord.id:controlsSystem}
 function renderControllerStatus(){
@@ -945,7 +978,18 @@ function show(open){
  $('stage').style.display='block';syncPlayEmpty();activateTab('play');play();
 }
 let touchControlsOn=false;
-function setTouchControlsActive(active){touchControlsOn=active;$('ctl').setAttribute('aria-pressed',String(active));$('ctl').classList.toggle('lp-touch-active',active);$('ctl-label').textContent=active?'Hide screen controls':'Show screen controls'}
+function syncPlayTouchButton(active){
+ const button=$('play-touch-toggle');button.hidden=$('stage').style.display==='none';
+ button.setAttribute('aria-pressed',String(Boolean(active)));
+ button.textContent=active?'Hide touch controls':'Show touch controls';
+}
+function setTouchControlsActive(active){
+ touchControlsOn=Boolean(active);
+ $('ctl').setAttribute('aria-pressed',String(touchControlsOn));
+ $('ctl').classList.toggle('lp-touch-active',touchControlsOn);
+ $('ctl-label').textContent=touchControlsOn?'Hide screen controls':'Show screen controls';
+ syncPlayTouchButton(touchControlsOn);
+}
 function resetTouchControls(){setTouchControlsActive(false)}
 function syncEmulatorDisplaySettings(){
  try{
@@ -1011,7 +1055,7 @@ document.addEventListener('visibilitychange',()=>{
  }
 });
 function activeEmulatorInstance(){
- if($('stage').style.display==='none')return null;
+ if($('stage').style.display==='none'||!activeRom)return null;
  try{
   const emulator=$('fr').contentWindow?.EJS_emulator;
   return emulator?.gameManager&&typeof emulator.changeSettingOption==='function'?emulator:null;
@@ -1071,6 +1115,8 @@ function syncGameSettings(){
  $('game-touch-controls').checked=ready
   ?(virtualGamepad===null?touchControlsEnabled:virtualGamepad!=='disabled')
   :touchControlsOn;
+ $('play-touch-toggle').hidden=!active;
+ syncPlayTouchButton($('game-touch-controls').checked);
  $('game-save-now').disabled=$('save-now').disabled;
  $('game-open-saves').disabled=$('save-manager').hidden;
 }
@@ -1462,6 +1508,14 @@ $('drop').ondrop=async e=>{
  }catch(error){msg('Could not add dropped files: '+error.message,false,'error')}
 };
 window.addEventListener('message',event=>{
+ if(event.source===$('fr').contentWindow&&event.data?.type==='rt-controls-ready'){
+  if(customControlsAvailable){
+   const showControls=touchControlsEnabled&&hasTouchInput();
+   setTouchControlsActive(showControls);
+   $('fr').contentWindow.postMessage(showControls?'gr-show':'gr-hide','*');
+  }
+  syncGameSettings();return;
+ }
  if(event.source===$('fr').contentWindow&&event.data?.type==='rt-controls-save'){
   const {scope,mapping}=event.data;
   if(scope!==activeControlScope||!mapping||typeof mapping!=='object'||Array.isArray(mapping))return;
@@ -1494,7 +1548,8 @@ $('run').onclick=restartCurrentGame;
 $('delete-all-data').addEventListener('click',clearAllLocalData);
 $('close-game').onclick=()=>{cleanupGame();resetTouchControls();$('title-name').textContent='Local title';$('title-size').textContent='';msg('Closed the current title.')};
 $('load-cancel').onclick=cancelCurrentLoad;
-$('ctl').onclick=()=>{setTouchControlsActive(!touchControlsOn);try{$('fr').contentWindow.postMessage('gr-toggle','*')}catch(e){}};
+$('ctl').onclick=()=>setTouchControlsPreference(!touchControlsOn);
+$('play-touch-toggle').addEventListener('click',()=>setTouchControlsPreference(!$('game-touch-controls').checked));
 $('fs').onclick=toggleFullscreen;
 $('fs-exit').onclick=exitFullscreen;
 $('dl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=name+'-runnable.html';a.click()};
