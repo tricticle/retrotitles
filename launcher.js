@@ -492,7 +492,7 @@ async function build(z,loadId=loadSequence){const names=Object.keys(z.files).fil
  return '<!DOCTYPE html>\n'+doc.documentElement.outerHTML;
 }
 
-const CTRL_FN=function(scope,fallbackScope,configuredMap){
+const CTRL_FN=function(scope,fallbackScope,configuredMap,configuredLayout){
  if(window.__grcLoader)return;window.__grcLoader=true;
  function createControls(){
   if(window.__grc)return;window.__grc=true;
@@ -502,6 +502,8 @@ const CTRL_FN=function(scope,fallbackScope,configuredMap){
   var DEF={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',a:'Space',b:'Z',x:'X',y:'C',start:'Enter'};
   var map={},k;for(k in DEF)map[k]=DEF[k];
   var scopeName=scope||'default',savedMaps={},sv=configuredMap||null;
+  var layoutKeys=['pad','a','b','x','y','start'],controlElements={},layout={},layoutMode=false,doneButton=null;
+  layoutKeys.forEach(function(key){var saved=configuredLayout&&configuredLayout[key];if(saved&&Number.isFinite(Number(saved.x))&&Number.isFinite(Number(saved.y)))layout[key]={x:Math.max(4,Math.min(96,Number(saved.x))),y:Math.max(6,Math.min(94,Number(saved.y)))}});
   if(!sv){
    try{savedMaps=JSON.parse(localStorage.getItem('retrotitles-control-mappings')||'{}')||{}}catch(e){console.warn('Could not read control mappings:',e)}
    sv=savedMaps[scopeName]||savedMaps[fallbackScope||'']||savedMaps.default||null;
@@ -542,29 +544,63 @@ const CTRL_FN=function(scope,fallbackScope,configuredMap){
    pointerActions.forEach(function(actions,id){releasePointer(id)});
    Object.keys(actionPresses).forEach(function(action){actionPresses[action]=1;release(action)});
   }
+  function applyLayout(){
+   Object.keys(controlElements).forEach(function(key){
+    var element=controlElements[key],position=layout[key];
+    if(!position){element.style.cssText=element.dataset.homeStyle||'';return}
+    element.style.left=position.x+'%';element.style.top=position.y+'%';element.style.right='auto';element.style.bottom='auto';element.style.transform='translate(-50%, -50%)';
+   });
+  }
+  function persistLayout(){
+   var safeLayout={};layoutKeys.forEach(function(key){var position=layout[key];if(position)safeLayout[key]={x:Math.max(4,Math.min(96,Number(position.x))),y:Math.max(6,Math.min(94,Number(position.y)))}});layout=safeLayout;
+   try{var stored=JSON.parse(localStorage.getItem('retrotitles-touch-layouts')||'{}');if(!stored||typeof stored!=='object'||Array.isArray(stored))stored={};stored[scopeName]=safeLayout;localStorage.setItem('retrotitles-touch-layouts',JSON.stringify(stored))}catch(error){}
+   parent.postMessage({type:'rt-controls-layout-save',scope:scopeName,layout:safeLayout},'*');
+  }
+  function beginDrag(element,key,event){
+   event.preventDefault();var rect=element.getBoundingClientRect(),offsetX=event.clientX-(rect.left+rect.width/2),offsetY=event.clientY-(rect.top+rect.height/2),startX=event.clientX,startY=event.clientY,moved=false,pointerId=event.pointerId;
+   try{element.setPointerCapture(pointerId)}catch(error){}
+   function move(next){
+    if(next.pointerId!==pointerId)return;
+    var width=rect.width,height=rect.height,cx=Math.max(width/2+4,Math.min(window.innerWidth-width/2-4,next.clientX-offsetX)),cy=Math.max(height/2+6,Math.min(window.innerHeight-height/2-6,next.clientY-offsetY));
+    layout[key]={x:cx/window.innerWidth*100,y:cy/window.innerHeight*100};applyLayout();if(Math.hypot(next.clientX-startX,next.clientY-startY)>3)moved=true;
+   }
+   function finish(next){
+    if(next.pointerId!==pointerId)return;element.removeEventListener('pointermove',move);element.removeEventListener('pointerup',finish);element.removeEventListener('pointercancel',finish);element.removeEventListener('lostpointercapture',finish);if(moved)persistLayout();
+   }
+   element.addEventListener('pointermove',move);element.addEventListener('pointerup',finish);element.addEventListener('pointercancel',finish);element.addEventListener('lostpointercapture',finish);
+  }
+  function nudgeControl(key,dx,dy){
+   var position=layout[key],element=controlElements[key];if(!position){var rect=element.getBoundingClientRect();position={x:(rect.left+rect.width/2)/window.innerWidth*100,y:(rect.top+rect.height/2)/window.innerHeight*100}}
+   layout[key]={x:Math.max(4,Math.min(96,position.x+dx*2)),y:Math.max(6,Math.min(94,position.y+dy*2))};applyLayout();persistLayout();
+  }
+  function setLayoutMode(enabled){
+   layoutMode=Boolean(enabled);root.classList.toggle('is-arranging',layoutMode);if(doneButton)doneButton.style.display=layoutMode?'flex':'none';
+   if(layoutMode){releaseAll();pn.style.display='none';doneButton.focus()}
+  }
   function bot(n){return 'bottom:calc('+n+'px + env(safe-area-inset-bottom,0px));'}
   var st=document.createElement('style');
   st.textContent='#grc{--grc-size:clamp(48px,15vw,62px);position:fixed;inset:0;z-index:2147483647;pointer-events:none;display:none;font:700 14px system-ui,sans-serif;user-select:none;-webkit-user-select:none}#grc *{box-sizing:border-box;touch-action:none}.grb{position:absolute;display:flex;align-items:center;justify-content:center;pointer-events:auto;border:1px solid rgba(236,228,255,.72);border-radius:50%;background:rgba(25,23,34,.78);color:#fbf8ff;font:inherit;text-shadow:0 1px 2px #000;box-shadow:0 5px 18px rgba(0,0,0,.38),inset 0 0 0 1px rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);-webkit-tap-highlight-color:transparent}.grb.on,.grb:active{background:rgba(168,141,245,.88);color:#17121f;transform:scale(.96)}.grb:focus-visible{outline:3px solid #c4adff;outline-offset:3px}.grdpad{left:max(14px,env(safe-area-inset-left,0px));'+bot(18)+'width:clamp(116px,35vw,148px);height:clamp(116px,35vw,148px);border-color:rgba(236,228,255,.48);background:radial-gradient(circle,#8170a7 0 12%,#41394f 13% 30%,rgba(33,31,43,.82) 31% 100%);touch-action:none}.grdpad-knob{position:absolute;left:50%;top:50%;width:38%;height:38%;transform:translate(-50%,-50%);border:1px solid rgba(255,255,255,.75);border-radius:50%;background:linear-gradient(145deg,#c4afff,#8870cb);box-shadow:0 3px 12px rgba(0,0,0,.45);pointer-events:none}.grbutton{width:var(--grc-size);height:var(--grc-size);font-size:15px}.grbutton[data-action="start"]{left:50%;'+bot(18)+'width:68px;height:34px;transform:translateX(-50%);border-radius:999px;font-size:10px;letter-spacing:.06em}.grbutton[data-action="a"]{right:max(14px,env(safe-area-inset-right,0px));'+bot(18+62)+'}.grbutton[data-action="b"]{right:calc(var(--grc-size) + 24px);'+bot(18)+'}.grbutton[data-action="x"]{right:calc(var(--grc-size) + 24px);bottom:calc(18px + var(--grc-size,62px) + env(safe-area-inset-bottom,0px));}.grbutton[data-action="y"]{right:calc(var(--grc-size) * 2 + 34px);bottom:calc(18px + var(--grc-size,62px) * .52 + env(safe-area-inset-bottom,0px));}#grp{position:absolute;right:12px;top:calc(58px + env(safe-area-inset-top,0px));width:min(320px,calc(100vw - 24px));max-height:min(70vh,520px);overflow:auto;padding:16px;border:1px solid #53476e;border-radius:16px;background:#191720;color:#f4efff;box-shadow:0 18px 48px rgba(0,0,0,.52);pointer-events:auto;display:none}#grp,#grp *{touch-action:auto}#grp [data-title]{margin:0 0 12px;font-size:14px}#grp label{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:44px;margin:0;border-top:1px solid #383442;font-size:12px}#grp select,#grp button{min-height:40px;padding:0 10px;border:1px solid #50485e;border-radius:9px;background:#272430;color:#f8f5ff;font:inherit}#grp button:focus-visible,#grp select:focus-visible{outline:3px solid #b8a2ff;outline-offset:2px}#grp .gr-actions{display:flex;gap:8px;margin-top:12px}#grp .gr-actions button{flex:1}';
   document.head.appendChild(st);
+  var layoutStyle=document.createElement('style');layoutStyle.textContent='#grc.is-arranging:before{content:"Drag controls to reposition · tap Done arranging when finished";position:fixed;z-index:0;top:calc(64px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 24px);padding:9px 13px;border:1px solid rgba(195,251,115,.36);border-radius:999px;background:rgba(17,19,27,.94);color:#f1f0fb;font:600 11px/1.3 system-ui,sans-serif;text-align:center;pointer-events:none}#grc.is-arranging .grb[data-control-key]{outline:2px dashed rgba(195,251,115,.8);outline-offset:3px;cursor:grab;box-shadow:0 0 0 4px rgba(195,251,115,.1),0 5px 18px rgba(0,0,0,.4)}#grc .gr-edit-done{position:fixed;z-index:2;font-size:12px;background:#c3fb73;color:#151a12;text-shadow:none;box-shadow:0 6px 22px rgba(0,0,0,.35)}#grp .gr-arrange{display:flex;width:100%;min-height:42px;align-items:center;justify-content:center;margin:8px 0 0;padding:0 12px;border:1px solid rgba(195,251,115,.45);border-radius:10px;background:rgba(195,251,115,.12);color:#efffd8;font:700 12px system-ui,sans-serif}#grp .gr-arrange-hint{margin:6px 0 10px;color:#b9b8c8;font:11px/1.5 system-ui,sans-serif}#grp .gr-actions{display:flex;flex-wrap:wrap;gap:6px}#grp .gr-actions button{min-height:38px;padding:0 10px;border:1px solid rgba(195,195,216,.2);border-radius:9px;background:#1a1d27;color:#f4f2ff;font:600 11px system-ui,sans-serif}';document.head.appendChild(layoutStyle);
   var root=document.createElement('div');root.id='grc';root.setAttribute('role','group');root.setAttribute('aria-label','Touch game controls');
   function box(css,txt,tag){var d=document.createElement(tag||'div');d.className='grb';d.style.cssText=css;if(d.tagName==='BUTTON')d.type='button';if(txt)d.textContent=txt;root.appendChild(d);return d}
-  var base=box('','','div');base.className='grb grdpad';base.setAttribute('role','group');base.setAttribute('aria-label','Directional pad');base.tabIndex=0;
+  var base=box('','','div');base.className='grb grdpad';base.setAttribute('role','group');base.setAttribute('aria-label','Directional pad');base.tabIndex=0;base.dataset.controlKey='pad';base.dataset.homeStyle=base.style.cssText;controlElements.pad=base;
   var knob=document.createElement('div');knob.className='grdpad-knob';knob.setAttribute('aria-hidden','true');base.appendChild(knob);
   function mv(ev){var rect=base.getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2,dx=ev.clientX-cx,dy=ev.clientY-cy,radius=rect.width*.48,distance=Math.hypot(dx,dy);if(distance>radius){dx*=radius/distance;dy*=radius/distance}knob.style.left='calc(50% + '+(dx*.44)+'px)';knob.style.top='calc(50% + '+(dy*.44)+'px)';var threshold=radius*.36,actions=[];if(dx<-threshold)actions.push('left');if(dx>threshold)actions.push('right');if(dy<-threshold)actions.push('up');if(dy>threshold)actions.push('down');setPointerActions(ev.pointerId,actions)}
   function endPad(ev){releasePointer(ev.pointerId);knob.style.left='50%';knob.style.top='50%'}
-  base.addEventListener('pointerdown',function(e){e.preventDefault();try{base.setPointerCapture(e.pointerId)}catch(error){}mv(e)});
-  base.addEventListener('pointermove',function(e){if(base.hasPointerCapture(e.pointerId))mv(e)});
+  base.addEventListener('pointerdown',function(e){if(layoutMode){beginDrag(base,'pad',e);return}e.preventDefault();try{base.setPointerCapture(e.pointerId)}catch(error){}mv(e)});
+  base.addEventListener('pointermove',function(e){if(!layoutMode&&base.hasPointerCapture(e.pointerId))mv(e)});
   ['pointerup','pointercancel','lostpointercapture'].forEach(function(type){base.addEventListener(type,endPad)});
   var keyActions={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
-  base.addEventListener('keydown',function(e){var action=keyActions[e.key];if(action){e.preventDefault();if(!e.repeat)press(action)}});
-  base.addEventListener('keyup',function(e){var action=keyActions[e.key];if(action){e.preventDefault();release(action)}});
+  base.addEventListener('keydown',function(e){if(layoutMode){var delta={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[e.key];if(delta){e.preventDefault();nudgeControl('pad',delta[0],delta[1])}return}var action=keyActions[e.key];if(action){e.preventDefault();if(!e.repeat)press(action)}});
+  base.addEventListener('keyup',function(e){if(layoutMode)return;var action=keyActions[e.key];if(action){e.preventDefault();release(action)}});
   function btn(action,label,css){
-   var button=box(css,label,'button');button.classList.add('grbutton');button.dataset.action=action;button.setAttribute('aria-label',label==='START'?'Start':label+' button');
-   button.addEventListener('pointerdown',function(e){e.preventDefault();try{button.setPointerCapture(e.pointerId)}catch(error){}button.classList.add('on');setPointerActions(e.pointerId,[action])});
+   var button=box(css,label,'button');button.classList.add('grbutton');button.dataset.action=action;button.dataset.controlKey=action;button.dataset.homeStyle=button.style.cssText;controlElements[action]=button;button.setAttribute('aria-label',label==='START'?'Start':label+' button');
+   button.addEventListener('pointerdown',function(e){if(layoutMode){beginDrag(button,action,e);return}e.preventDefault();try{button.setPointerCapture(e.pointerId)}catch(error){}button.classList.add('on');setPointerActions(e.pointerId,[action])});
    var finish=function(e){button.classList.remove('on');releasePointer(e.pointerId)};
    ['pointerup','pointercancel','lostpointercapture'].forEach(function(type){button.addEventListener(type,finish)});
-   button.addEventListener('keydown',function(e){if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();press(action)}});
-   button.addEventListener('keyup',function(e){if(e.key===' '||e.key==='Enter'){e.preventDefault();release(action)}});
+   button.addEventListener('keydown',function(e){if(layoutMode){var delta={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[e.key];if(delta){e.preventDefault();nudgeControl(action,delta[0],delta[1])}return}if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();press(action)}});
+   button.addEventListener('keyup',function(e){if(layoutMode)return;if(e.key===' '||e.key==='Enter'){e.preventDefault();release(action)}});
    button.addEventListener('blur',function(){release(action)});
   }
   btn('a','A','right:max(14px,env(safe-area-inset-right,0px));'+bot(80));
@@ -575,14 +611,17 @@ const CTRL_FN=function(scope,fallbackScope,configuredMap){
   var pn=document.createElement('section');pn.id='grp';pn.setAttribute('role','dialog');pn.setAttribute('aria-labelledby','gr-title');pn.setAttribute('aria-modal','false');root.appendChild(pn);
   function closeSettings(){pn.style.display='none';gear.focus()}
   function build(){
-   pn.replaceChildren();var heading=document.createElement('h2');heading.id='gr-title';heading.dataset.title='true';heading.textContent='Control mapping';pn.appendChild(heading);
+   pn.replaceChildren();var heading=document.createElement('h2');heading.id='gr-title';heading.dataset.title='true';heading.textContent='Touch controls';pn.appendChild(heading);
+   var arrange=document.createElement('button');arrange.type='button';arrange.className='gr-arrange';arrange.dataset.arrange='true';arrange.setAttribute('aria-pressed',String(layoutMode));arrange.textContent=layoutMode?'Done arranging':'Arrange controls';arrange.addEventListener('click',function(){if(layoutMode){setLayoutMode(false);build();pn.style.display='block';pn.querySelector('[data-arrange]')?.focus()}else setLayoutMode(true)});pn.appendChild(arrange);
+   var hint=document.createElement('p');hint.className='gr-arrange-hint';hint.setAttribute('aria-live','polite');hint.textContent='Drag the pad or buttons into place; inputs pause while arranging. Your layout is saved for this game on this device.';pn.appendChild(hint);
    ACT.forEach(function(pair){var label=document.createElement('label'),caption=document.createElement('span'),select=document.createElement('select');caption.textContent=pair[1];select.setAttribute('aria-label',pair[1]+' keyboard key');NAMES.forEach(function(key){var option=document.createElement('option');option.value=key;option.textContent=key;if(map[pair[0]]===key)option.selected=true;select.appendChild(option)});select.addEventListener('change',function(){release(pair[0]);map[pair[0]]=select.value;save()});label.append(caption,select);pn.appendChild(label)});
-   var actions=document.createElement('div');actions.className='gr-actions';var reset=document.createElement('button'),close=document.createElement('button');reset.type=close.type='button';reset.textContent='Reset';close.textContent='Close';reset.addEventListener('click',function(){releaseAll();for(var action in DEF)map[action]=DEF[action];save();build()});close.addEventListener('click',closeSettings);actions.append(reset,close);pn.appendChild(actions);
+   var actions=document.createElement('div');actions.className='gr-actions';var reset=document.createElement('button'),resetLayout=document.createElement('button'),close=document.createElement('button');reset.type=resetLayout.type=close.type='button';reset.textContent='Reset keys';resetLayout.textContent='Reset positions';close.textContent='Close';reset.addEventListener('click',function(){releaseAll();for(var action in DEF)map[action]=DEF[action];save();build()});resetLayout.addEventListener('click',function(){layout={};applyLayout();persistLayout()});close.addEventListener('click',closeSettings);actions.append(reset,resetLayout,close);pn.appendChild(actions);
   }
   var gear=box('right:12px;top:calc(12px + env(safe-area-inset-top,0px));width:42px;height:42px;opacity:.92','Settings','button');gear.classList.add('grbutton');gear.style.borderRadius='12px';gear.setAttribute('aria-label','Touch control settings');
-  gear.addEventListener('click',function(){build();pn.style.display='block';pn.querySelector('select')?.focus()});
-  document.body.appendChild(root);
-  function vis(visible){root.style.display=visible?'block':'none';root.setAttribute('aria-hidden',String(!visible));if(!visible){releaseAll();knob.style.left='50%';knob.style.top='50%';if(pn)pn.style.display='none'}}
+  gear.addEventListener('click',function(){build();pn.style.display='block';pn.querySelector('[data-arrange]')?.focus()});
+  doneButton=box('left:50%;top:calc(12px + env(safe-area-inset-top,0px));width:auto;height:42px;padding:0 18px;display:none;transform:translateX(-50%);border-radius:999px','Done arranging','button');doneButton.classList.add('gr-edit-done');doneButton.setAttribute('aria-label','Finish arranging touch controls');doneButton.addEventListener('click',function(){setLayoutMode(false);gear.focus()});
+  applyLayout();document.body.appendChild(root);
+  function vis(visible){root.style.display=visible?'block':'none';root.setAttribute('aria-hidden',String(!visible));if(!visible){releaseAll();setLayoutMode(false);knob.style.left='50%';knob.style.top='50%';if(pn)pn.style.display='none'}}
   root.__grToggle=function(){vis(root.style.display==='none')};root.__grShow=function(){vis(true)};root.__grHide=function(){vis(false)};
   vis(true);
   window.addEventListener('blur',releaseAll);document.addEventListener('visibilitychange',function(){if(document.hidden)releaseAll()});window.addEventListener('pagehide',releaseAll);
@@ -629,9 +668,10 @@ const PLAYER_LOG_FN=function(){
  });
 };
 const addCtl=(h,includeControls=true,controlScope='default',fallbackScope='default')=>{
- const diagnostics='<script>('+PLAYER_LOG_FN.toString()+')()<\/script>';
+ const diagnostics='<script>('+PLAYER_LOG_FN.toString()+')()<\\/script>';
  const configuredMap={...(controlMappings.default||{}),...(controlMappings[fallbackScope]||{}),...(controlMappings[controlScope]||{})};
- const controls=includeControls?'<script>('+CTRL_FN.toString()+')('+JSON.stringify(controlScope)+','+JSON.stringify(fallbackScope)+','+JSON.stringify(configuredMap)+')<\/script>':'';
+ const configuredLayout=Object.prototype.hasOwnProperty.call(controlLayouts,controlScope)?{...(controlLayouts[controlScope]||{})}:{...(controlLayouts.default||{}),...(controlLayouts[fallbackScope]||{})};
+ const controls=includeControls?'<script>('+CTRL_FN.toString()+')('+JSON.stringify(controlScope)+','+JSON.stringify(fallbackScope)+','+JSON.stringify(configuredMap)+','+JSON.stringify(configuredLayout)+')<\\/script>':'';
  let page=h,head=/<head[^>]*>/i.exec(page);
  if(head)page=page.slice(0,head.index+head[0].length)+diagnostics+page.slice(head.index+head[0].length);
  else page=diagnostics+page;
@@ -705,6 +745,7 @@ function setLoadedTitle(title,size=''){$('title-name').textContent=title||'Local
 const controlActions=[['up','Up'],['down','Down'],['left','Left'],['right','Right'],['a','A'],['b','B'],['x','X'],['y','Y'],['start','Start']];
 const controlKeyNames=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','W','A','S','D','Space','Enter','Shift','Control','Escape','Tab','Z','X','C','V','E','Q','F','R','1','2','3','4'];
 let controlMappings=readStoredObject('retrotitles-control-mappings',{});
+let controlLayouts=readStoredObject('retrotitles-touch-layouts',{});
 if(!controlMappings.default){
  const legacyMapping=readStoredObject('gr-keys',null);
  if(legacyMapping){controlMappings.default=legacyMapping;writeStoredValue('retrotitles-control-mappings',JSON.stringify(controlMappings))}
@@ -1516,7 +1557,7 @@ window.addEventListener('message',event=>{
   }
   syncGameSettings();return;
  }
- if(event.source===$('fr').contentWindow&&event.data?.type==='rt-controls-save'){
+  if(event.source===$('fr').contentWindow&&event.data?.type==='rt-controls-save'){
   const {scope,mapping}=event.data;
   if(scope!==activeControlScope||!mapping||typeof mapping!=='object'||Array.isArray(mapping))return;
   const safeMapping={};
@@ -1530,6 +1571,18 @@ window.addEventListener('message',event=>{
   }
   return;
  }
+ if(event.source===$('fr').contentWindow&&event.data?.type==='rt-controls-layout-save'){
+  const {scope,layout}=event.data;
+  if(scope!==activeControlScope||!layout||typeof layout!=='object'||Array.isArray(layout))return;
+  const safeLayout={};
+  for(const key of ['pad','a','b','x','y','start']){
+   const position=layout[key];if(!position||!Number.isFinite(Number(position.x))||!Number.isFinite(Number(position.y)))continue;
+   safeLayout[key]={x:Math.max(4,Math.min(96,Number(position.x))),y:Math.max(6,Math.min(94,Number(position.y)))};
+  }
+  controlLayouts[scope]=safeLayout;writeStoredValue('retrotitles-touch-layouts',JSON.stringify(controlLayouts));
+  return;
+ }
+
  if(event.source!==$('fr').contentWindow||event.data?.type!=='rt-emulator-failed'||!activeRom||event.data.runId!==activeRom.loadId)return;
  const current=activeRom.cores.indexOf(activeRom.coreId),alternate=activeRom.cores[current+1];
  if(alternate){
