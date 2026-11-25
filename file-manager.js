@@ -19,11 +19,21 @@
   const newId=()=>crypto.randomUUID?.()||Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,'0')).join('');
   const extOf=name=>String(name||'').split('.').pop().toLowerCase();
   const isArchive=name=>['zip','rar'].includes(extOf(name));
-  const systemFor=name=>{
-   const extension=extOf(name);
-   const systems={nes:'nes',fds:'nes',unif:'nes',unf:'nes',smc:'snes',sfc:'snes',gb:'gb',gbc:'gb',gba:'gba',n64:'n64',z64:'n64',nds:'nds',md:'segaMD',gen:'segaMD',cso:'psp',prx:'psp',chd:null,cue:null,bin:null,iso:null,tap:null,dsk:null};
-   return systems[extension]||null;
+  const systems={
+   a52:'atari5200',a26:'atari2600',a78:'atari7800',vb:'vb',vboy:'vb',nes:'nes',fds:'nes',unif:'nes',unf:'nes',
+   smc:'snes',sfc:'snes',swc:'snes',fig:'snes',bs:'snes',st:'snes',gb:'gb',gbc:'gb',dmg:'gb',gba:'gba',
+   n64:'n64',z64:'n64',v64:'n64',u1:'n64',ndd:'n64',nds:'nds',md:'segaMD',mdx:'segaMD',gen:'segaMD',smd:'segaMD',
+   sms:'segaMS',gg:'segaGG',sg:'segaMS',sgd:'segaMS','32x':'sega32x',col:'coleco',cv:'coleco',lnx:'lynx',ngp:'ngp',
+   ngc:'ngp',pce:'pce',ws:'ws',wsc:'ws',pc2:'ws',j64:'jaguar',jag:'jaguar',adf:'amiga',adz:'amiga',dms:'amiga',
+   fdi:'amiga',ipf:'amiga',hdf:'amiga',hdz:'amiga',lha:'amiga',uae:'amiga',d64:'c64',d71:'c64',d80:'c64',d81:'c64',
+   d82:'c64',g64:'c64',g41:'c64',x64:'c64',nib:'c64',d2m:'c64',d4m:'c64',t64:'c64',tcrt:'c64',prg:'c64',p00:'c64',
+   crt:'c64',cmd:'c64',vfl:'c64',vsf:'c64',sna:'cap32',cdt:'cap32',cpr:'cap32',voc:'cap32',kcr:'crocods',p:'81',
+   z80:'fuse',rzx:'fuse',scl:'fuse',trd:'fuse',wad:'prboom',iwad:'prboom',pwad:'prboom',cso:'psp',prx:'psp',elf:'psp',conf:'dos'
   };
+  const librarySystemNames=new Map(Array.from($('core-select').options,option=>[option.value,option.textContent]));
+  const systemFor=name=>systems[extOf(name)]||null;
+  const isTitleFile=record=>Boolean(record.system||systemFor(record.name)||isArchive(record.name)||['bin','cue','chd','iso','tap','dsk','html','htm','js','py','swf'].includes(extOf(record.name)));
+  const libraryKey=record=>normalizePath(record.path).toLocaleLowerCase();
   function openDb(){
    if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{
     const request=window.indexedDB.open(DB_NAME,DB_VERSION);
@@ -255,7 +265,8 @@
    const button=document.createElement('button');button.type='button';button.className='lp-button';
    const iconPaths={
     replace:'M20 7v5h-5M4 17v-5h5m-4.1-3A8 8 0 0 1 19 7l1 5M4 12l1 5a8 8 0 0 0 14.1 3',
-    play:'M8 5v14l11-7z'
+    play:'M8 5v14l11-7z',
+    star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z'
    };
    if(iconPaths[iconName]){
     const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -284,7 +295,26 @@
    if(!file)throw new Error('The local data for '+record.name+' is no longer available.');
    return new File([file],record.name,{type:record.type,lastModified:record.addedAt});
   }
+  async function readLibraryState(){
+   const stored=await getMetadata('library-state');
+   return stored&&typeof stored==='object'?{favorites:Array.isArray(stored.favorites)?stored.favorites:[],recent:stored.recent&&typeof stored.recent==='object'?stored.recent:{}}:{favorites:[],recent:{}};
+  }
+  async function writeLibraryState(state){
+   const db=await openDb(),transaction=db.transaction(META,'readwrite');
+   transaction.objectStore(META).put({key:'library-state',value:state});
+   await transactionDone(transaction);
+  }
+  async function markPlayed(record){
+   const state=await readLibraryState();state.recent[libraryKey(record)]=Date.now();
+   await writeLibraryState(state);window.dispatchEvent(new CustomEvent('library-updated'));
+  }
+  async function toggleFavorite(record){
+   const state=await readLibraryState(),key=libraryKey(record),favorites=new Set(state.favorites);
+   if(favorites.has(key))favorites.delete(key);else favorites.add(key);
+   state.favorites=Array.from(favorites);await writeLibraryState(state);await refresh();
+  }
   async function openRecord(record,systemOverride=''){
+   await markPlayed(record);
    return openFile(await getRecordFile(record),record,systemOverride);
   }
   async function openFolderRecord(path){
@@ -294,6 +324,7 @@
     .filter(record=>!record.superseded&&record.normalizedPath.startsWith(prefix))
     .sort((a,b)=>a.path.localeCompare(b.path));
    if(!records.length)throw new Error('No stored files were found in '+folderPath+'.');
+   await markPlayed({path:folderPath});
    const files=[],paths=[];
    for(const record of records){
     files.push(await getRecordFile(record));
@@ -301,15 +332,34 @@
    }
    return openFolder(files,paths);
   }
-  function renderLibrary(records){
-   const search=$('library-search').value.trim().toLocaleLowerCase();
+  function renderLibrary(records,state){
+   const search=$('library-search').value.trim().toLocaleLowerCase(),favoriteOnly=$('library-favorites').checked;
    const current=records.filter(record=>!record.superseded);
-   const systems=[...new Set(current.filter(record=>record.system).map(record=>record.system))].sort();
-   const sources=[...new Set(current.map(record=>record.source))].sort();
+   const directoryContents=new Map();
+   current.forEach(record=>{
+    const parts=normalizePath(record.path).split('/').filter(Boolean);
+    for(let index=0;index<parts.length-1;index++){
+     const folderPath=parts.slice(0,index+1).join('/');
+     if(!directoryContents.has(folderPath.toLowerCase()))directoryContents.set(folderPath.toLowerCase(),{path:folderPath,records:[]});
+     directoryContents.get(folderPath.toLowerCase()).records.push(record);
+    }
+   });
+   const webProjectFolders=[];
+   current.filter(record=>/^index\.html?$/i.test(record.name)).forEach(record=>{
+    const slash=record.path.lastIndexOf('/');
+    if(slash<0)return;
+    const path=record.path.slice(0,slash),contents=directoryContents.get(path.toLowerCase());
+    if(contents&&contents.records.length>1)webProjectFolders.push({...contents,name:path.split('/').pop(),isLibraryFolder:true,system:'browser',size:contents.records.reduce((total,item)=>total+item.size,0),addedAt:Math.max(...contents.records.map(item=>Number(item.addedAt)||0)),source:'folder'});
+   });
+   const webProjectFiles=new Set(webProjectFolders.flatMap(folder=>folder.records.map(record=>record.path.toLowerCase())));
+   const titles=[...current.filter(record=>isTitleFile(record)&&!webProjectFiles.has(record.path.toLowerCase())),...webProjectFolders];
+   const systems=[...new Set(titles.filter(record=>record.system).map(record=>record.system))].sort();
+   const sources=[...new Set(titles.map(record=>record.source))].sort();
    if(!systems.includes(libraryFilters.system))libraryFilters.system='';
    if(!sources.includes(libraryFilters.source))libraryFilters.source='';
+   const systemLabel=value=>value==='browser'?'Browser game':librarySystemNames.get(value)||value;
    const renderChips=(container,values,selected,onSelect)=>{
-    const buttons=[['All',''],...values.map(value=>[value,value])].map(([label,value])=>{
+    const buttons=[['All',''],...values.map(value=>[systemLabel(value),value])].map(([label,value])=>{
      const button=document.createElement('button');button.type='button';button.className='lp-filter-chip';button.textContent=label;
      button.setAttribute('aria-pressed',String(selected===value));
      button.addEventListener('click',()=>onSelect(value));return button;
@@ -318,34 +368,47 @@
    };
    renderChips($('library-system-filters'),systems,libraryFilters.system,value=>{libraryFilters.system=value;refresh().catch(error=>msg('Could not refresh the library: '+error.message,false,'error'))});
    renderChips($('library-source-filters'),sources,libraryFilters.source,value=>{libraryFilters.source=value;refresh().catch(error=>msg('Could not refresh the library: '+error.message,false,'error'))});
-   const files=current.filter(record=>
+   const filtered=titles.filter(record=>
     (!libraryFilters.system||record.system===libraryFilters.system)&&
     (!libraryFilters.source||record.source===libraryFilters.source)&&
-    (!search||(record.path+' '+record.name+' '+record.source).toLocaleLowerCase().includes(search))
-   ).sort((a,b)=>a.path.localeCompare(b.path)||a.addedAt-b.addedAt);
+    (!favoriteOnly||state.favorites.includes(libraryKey(record)))&&
+    (!search||(record.path+' '+record.name+' '+(record.system?systemLabel(record.system):'')+' '+record.source).toLocaleLowerCase().includes(search))
+   );
+   const sort=$('library-sort').value;
+   filtered.sort((a,b)=>{
+    if(sort==='name')return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});
+    if(sort==='added')return b.addedAt-a.addedAt||a.name.localeCompare(b.name);
+    return (state.recent[libraryKey(b)]||b.addedAt)-(state.recent[libraryKey(a)]||a.addedAt)||a.name.localeCompare(b.name);
+   });
+   $('library-count').textContent=titles.length+' game'+(titles.length===1?'':'s');
    const target=$('library-list');target.dataset.view=libraryView;target.replaceChildren();
-   $('library-empty').hidden=current.length>0&&files.length>0;
-   $('library-empty').textContent=current.length&&!files.length?'No games match these filters.':'No games added yet. Use the + button or drag files in.';
-   for(const record of files){
-    const row=document.createElement('li');row.className='lp-game-card';
-    row.addEventListener('contextmenu',event=>{event.preventDefault();window.__retrotitlesOpenControls?.(record)});
+   $('library-empty').hidden=filtered.length>0;
+   $('library-empty').textContent=titles.length===0?'Your library is ready for its first game. Add a supported file, folder, or archive.':favoriteOnly&&!filtered.length?'No favorites saved yet. Tap Save on a game to keep it close.':'No games match these filters. Try another search or system.';
+   for(const record of filtered){
+    const key=libraryKey(record),isFavorite=state.favorites.includes(key),row=document.createElement('li');row.className='lp-game-card';
+    row.addEventListener('contextmenu',event=>{if(record.isLibraryFolder)return;event.preventDefault();window.__retrotitlesOpenControls?.(record)});
+    const cover=document.createElement('div');cover.className='lp-game-cover';cover.setAttribute('aria-hidden','true');
+    const mark=document.createElement('span');mark.textContent=(record.system==='browser'?'WEB':record.system||extOf(record.name)).toUpperCase().slice(0,5);cover.append(mark);
     const details=document.createElement('div');details.className='lp-game-card-main';
     const title=document.createElement('span');title.className='lp-game-card-title';title.textContent=record.name;title.title=record.path;
     const meta=document.createElement('span');meta.className='lp-game-card-meta';
-    meta.textContent=record.path+(record.system?' · '+record.system:'')+' · '+sizeLabel(record.size);
+    meta.textContent=(record.isLibraryFolder?'Multi-file browser game':systemLabel(record.system||'')+' · '+sizeLabel(record.size));
     const source=document.createElement('span');source.className='lp-source-badge';source.textContent=record.source.replace(/[-_]/g,' ');
     details.append(title,meta,source);
     const actions=document.createElement('div');actions.className='lp-game-card-actions';
-    actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
-    if(['exe','com','bat'].includes(extOf(record.name))){
-     actions.append(makeButton('Try DOS','Try running '+record.name+' as a DOS program',()=>openRecord(record,'dos').catch(error=>msg('Could not run '+record.name+' as DOS: '+error.message,false,'error'))));
-    }
-    actions.append(makeButton('Controls','Configure controls for '+record.name,()=>window.__retrotitlesOpenControls?.(record)));
-    row.append(details,actions);target.append(row);
+    const play=makeButton('Play','Play '+record.name,()=>{
+     const opening=record.isLibraryFolder?openFolderRecord(record.path):openRecord(record);
+     opening.catch(error=>msg('Could not open '+record.name+': '+error.message,false,'error'));
+    },'play');
+    play.classList.add('lp-game-play');
+    const favorite=makeButton(isFavorite?'Saved':'Save',(isFavorite?'Remove from':'Add to')+' favorites: '+record.name,()=>toggleFavorite(record).catch(error=>msg('Could not update favorites: '+error.message,false,'error')),'star');
+    favorite.setAttribute('aria-pressed',String(isFavorite));favorite.classList.add('lp-game-favorite');
+    if(isFavorite)favorite.classList.add('is-favorite');
+    actions.append(play,favorite);
+    if(!record.isLibraryFolder)actions.append(makeButton('Controls','Configure controls for '+record.name,()=>window.__retrotitlesOpenControls?.(record)));
+    row.append(cover,details,actions);target.append(row);
    }
-   document.querySelectorAll('[data-library-view]').forEach(button=>{
-    button.setAttribute('aria-pressed',String(button.dataset.libraryView===libraryView));
-   });
+   document.querySelectorAll('[data-library-view]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.libraryView===libraryView)));
   }
   function fileRow(record,parentNames){
    const row=document.createElement('li');row.className='lp-library-row lp-file-row';
@@ -400,8 +463,8 @@
     .sort((a,b)=>a.path.localeCompare(b.path)||a.addedAt-b.addedAt);
   }
   async function refresh(){
-   const records=await getAllRecords(),files=visibleRecords(records);
-   renderLibrary(records);
+   const [records,state]=await Promise.all([getAllRecords(),readLibraryState()]),files=visibleRecords(records);
+   renderLibrary(records,state);
    list.replaceChildren();empty.hidden=files.length>0;
    const systems=[...new Set(records.filter(record=>!record.superseded&&record.system).map(record=>record.system))].sort();
    const types=[...new Set(records.filter(record=>!record.superseded).map(record=>extOf(record.name)))].sort();
@@ -560,6 +623,8 @@
    $(id).addEventListener('input',refreshOnChange);$(id).addEventListener('change',refreshOnChange);
   });
   $('library-search').addEventListener('input',refreshOnChange);
+  $('library-favorites').addEventListener('change',refreshOnChange);
+  $('library-sort').addEventListener('change',refreshOnChange);
   $('library-add-files').onclick=()=>$('file-import-button').click();
   $('file-delete-selected').onclick=()=>deleteSelectedFiles().catch(error=>msg('Could not delete selected files: '+error.message,false,'error'));
   document.querySelectorAll('[data-library-view]').forEach(button=>button.addEventListener('click',()=>{

@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>retrotitles</title>
+<html lang="en"><head><meta charset="utf-8"><title>retrotitles — your pocket arcade</title>
+<meta name="description" content="Play supported retro games and browser titles from your device. A private, mobile-friendly local game library with touch controls and save states.">
+<meta name="theme-color" content="#101116">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="stylesheet" href="launcher.css">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -116,17 +118,17 @@
  <div id="msg" class="lp-message" role="status" aria-live="polite" aria-busy="false"><span id="msg-text"></span><progress id="load-progress" class="lp-load-progress" max="100" hidden></progress><button id="load-cancel" class="lp-load-cancel" type="button" hidden>Cancel</button><button id="copy-diagnostic" class="lp-button" type="button" hidden>Copy diagnostic</button></div>
  <input id="file-import" class="lp-hidden-input" type="file" multiple aria-label="Add files to the unified file view">
  <section id="panel-library" class="lp-tabpanel" role="tabpanel" aria-labelledby="tab-library" tabindex="0">
- <p class="lp-kicker">A player for your own files</p>
- <h1 class="lp-heading">Your titles, <em>right where you left them.</em></h1>
- <p class="lp-intro">Bring a local file, folder, or interactive web build. Nothing gets uploaded, and large files are read only when the player asks for them.</p>
+ <p class="lp-kicker">YOUR POCKET ARCADE</p>
+ <h1 class="lp-heading">Your games, <em>ready when you are.</em></h1>
+ <p class="lp-intro">Pick a game from your phone or add a folder or archive. Your files stay on this device, and supported titles can use on-screen controls.</p>
  <div class="lp-layout">
   <section class="lp-launch-card" aria-label="Choose a local title">
    <div id="drop" class="lp-drop" aria-label="Choose a local file or drop it here">
     <input id="f" class="lp-hidden-input" type="file" aria-label="Choose a local title file">
     <span class="lp-file-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6m-3 3h6"/></svg></span>
-    <h2 class="lp-drop-title">Start with a local title</h2>
-    <p class="lp-drop-subtitle">Choose one file, or drop it here</p>
-    <button class="lp-primary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6m-3 3h6"/></svg>Choose a file</button>
+    <h2 class="lp-drop-title">Play a game</h2>
+    <p class="lp-drop-subtitle">Pick a game file, ZIP, or RAR from this device</p>
+    <button class="lp-primary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6m-3 3h6"/></svg>Choose a game</button>
    </div>
    <div class="lp-action-row">
     <div class="lp-secondary-actions">
@@ -140,7 +142,7 @@
   </section>
   <aside class="lp-aside">
    <div>
-    <p class="lp-aside-label">Your files stay yours</p>
+    <p class="lp-aside-label">MADE FOR YOUR DEVICE</p>
     <h2>Local first. Always.</h2>
     <ul class="lp-benefits">
      <li class="lp-benefit"><span class="lp-benefit-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v13H3z"/><path d="M6 7V4h12v3M7 11h10"/></svg></span><span><strong>On your device</strong><span>Files are opened from your browser, not sent to a server.</span></span></li>
@@ -152,15 +154,21 @@
   </aside>
  </div>
  <section class="lp-library lp-game-library" aria-labelledby="library-title">
-  <div class="lp-library-heading"><div><p class="lp-aside-label">On this device</p><h2 id="library-title">Your library</h2></div><button id="library-add-files" class="lp-button lp-add-button" type="button" aria-label="Add files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg><span>Add files</span></button></div>
+  <div class="lp-library-heading"><div><p class="lp-aside-label">ON THIS DEVICE</p><h2 id="library-title">Your library <span id="library-count" class="lp-library-count">0 games</span></h2></div><button id="library-add-files" class="lp-button lp-add-button" type="button" aria-label="Add files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg><span>Add games</span></button></div>
   <div class="lp-library-tools">
-   <input id="library-search" type="search" placeholder="Search your library" aria-label="Search library">
+   <input id="library-search" type="search" placeholder="Search games or systems" aria-label="Search games">
    <div class="lp-library-filters"><div id="library-system-filters" class="lp-chip-group" aria-label="Filter by system"></div><div id="library-source-filters" class="lp-chip-group" aria-label="Filter by source"></div></div>
+   <label class="lp-favorite-filter" for="library-favorites"><input id="library-favorites" type="checkbox">Favorites</label>
+   <select id="library-sort" aria-label="Sort games"><option value="recent">Recently played</option><option value="added">Recently added</option><option value="name">Name: A to Z</option></select>
    <div class="lp-view-toggle" role="group" aria-label="Library view"><button class="lp-button" type="button" data-library-view="grid" aria-pressed="true" aria-label="Grid view"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg></button><button class="lp-button" type="button" data-library-view="list" aria-pressed="false" aria-label="List view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01"/></svg></button></div>
   </div>
-  <p id="library-empty" class="lp-library-empty">No games added yet. Use the + button or drag files in.</p>
+  <p id="library-empty" class="lp-library-empty">Your library is ready for its first game. Add a supported file, folder, or archive.</p>
   <ul id="library-list" class="lp-game-grid" data-view="grid"></ul>
  </section>
+ <details class="lp-compatibility-card">
+  <summary><span>What can I play here?</span><span class="lp-compatibility-hint">Supported formats and phone tips</span></summary>
+  <div class="lp-compatibility-content"><p>RetroTitles runs many classic console formats through EmulatorJS, plus browser games, Flash titles, and compatible web exports. ZIP and RAR archives are supported. Some systems need a BIOS file, and large games work best when this page is served over HTTPS.</p><p>Choose a game file from your phone, or select a complete game folder for web builds. Enable touch controls in Controls or Game settings. Compatibility depends on the exact game, file, browser, and device; native PC/console installs and every game are not supported.</p></div>
+ </details>
  </section>
  <section id="panel-files" class="lp-tabpanel" role="tabpanel" aria-labelledby="tab-files" tabindex="0" hidden>
   <div class="lp-library-heading lp-panel-heading"><div><p class="lp-aside-label">One list, every source</p><h1>Files</h1></div></div>

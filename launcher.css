@@ -1294,3 +1294,194 @@ html, body { margin: 0; min-height: 100%; }
 @media (prefers-reduced-transparency: reduce) {
   .lp-tabbar { background: var(--lp-card); backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+/* Pocket arcade theme: high-contrast surfaces, quick library actions, and phone-first play. */
+html, body { background: #101116; }
+.lp-page {
+  --lp-paper: #101116;
+  --lp-card: #1a1b23;
+  --lp-ink: #f4f1ff;
+  --lp-ink-soft: #d8d2ee;
+  --lp-muted: #aaa8b9;
+  --lp-line: #343440;
+  --lp-moss: #282638;
+  --lp-citrus: #b8a2ff;
+  --lp-coral: #ff927b;
+  --lp-surface-shadow: 0 18px 50px rgba(0, 0, 0, .2);
+  padding-bottom: 56px;
+  background: radial-gradient(ellipse at 82% 0%, rgba(113, 81, 184, .17), transparent 35%), #101116;
+  color: var(--lp-ink);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.lp-frame { width: min(1120px, 100%); }
+.lp-topbar { min-height: 70px; border-color: #292a34; }
+.lp-brand { color: #f4f1ff; }
+.lp-mark { background: #8e72df; color: #14111d; box-shadow: 0 0 24px rgba(161, 137, 255, .22); }
+.lp-top-note { color: #a6a1b6; }
+.lp-top-note svg { color: #9be0b8; }
+.lp-console-toggle, .lp-settings-open { border-color: #353541; background: #1b1c25; color: #e7e3f3; }
+.lp-console-toggle svg { color: #b8a2ff; }
+.lp-console-badge { background: #8064d1; }
+.lp-main { padding-top: 20px; }
+.lp-tabbar { border-color: #30313c; background: #191a22; }
+.lp-tab { color: #aaa8b8; }
+.lp-tab[aria-selected="true"] { background: #292637; color: #fff; box-shadow: inset 0 0 0 1px rgba(184, 162, 255, .3); }
+.lp-tab[aria-selected="true"] svg { color: #c3aeff; }
+.lp-kicker { color: #b8a2ff; }
+.lp-kicker::before { background: #9479e8; }
+.lp-heading { color: #f7f4ff; }
+.lp-heading em { color: #b8a2ff; }
+.lp-intro, .lp-panel-intro { color: #aaa8b9; }
+.lp-layout { grid-template-columns: minmax(0, 1.55fr) minmax(250px, .75fr); gap: 16px; margin-top: 22px; }
+.lp-launch-card, .lp-loaded, .lp-file-manager, .lp-settings-group { border-color: #343440; background: #191a22; box-shadow: var(--lp-surface-shadow); }
+.lp-launch-card { padding: 12px; border-radius: 19px; }
+.lp-drop { min-height: 204px; border-color: #5d4b87; border-radius: 14px; background: radial-gradient(ellipse at 50% 10%, rgba(132, 98, 213, .17), transparent 65%), #1d1c28; color: #f3efff; }
+.lp-drop:hover, .lp-drop:focus-visible, .lp-drop.is-over { border-color: #b8a2ff; background-color: #252136; }
+.lp-file-icon { border-color: #594b7a; background: #302844; color: #c7b7ff; }
+.lp-drop-title { color: #f5f2ff; }
+.lp-drop-subtitle, .lp-zip-label, .lp-system-choice { color: #b0acbd; }
+.lp-primary { background: #a88df5; color: #17121f !important; box-shadow: 0 8px 24px rgba(157, 124, 255, .18); }
+.lp-primary:hover { background: #bba8ff; }
+.lp-button, .lp-console-action { border-color: #3a3b47; background: #22232d; color: #ece9f7; }
+.lp-button:hover:not(:disabled), .lp-console-action:hover { border-color: #7563a5; background: #302b40; }
+.lp-button:focus-visible, .lp-primary:focus-visible, .lp-page :is(button, input, select, textarea, summary, a):focus-visible { outline-color: #c1adff; }
+.lp-private-note { border-color: #30313c; color: #aaa8b9; }
+.lp-private-note strong { color: #d5c8ff; }
+.lp-private-note svg { color: #a88df5; }
+.lp-aside { border-color: #343440; background: linear-gradient(145deg, #252233, #1c1d26 72%); }
+.lp-aside-label { color: #b8a2ff; }
+.lp-aside h2 { color: #f2effb; }
+.lp-benefit-icon { border-color: #4b435f; background: #292637; color: #c6b2ff; }
+.lp-benefit strong { color: #eeeaf8; }
+.lp-benefit span, .lp-aside-foot { color: #aaa8b9; }
+.lp-aside-foot { border-color: #3d394b; }
+.lp-message { color: #c7c2d4; }
+.lp-load-progress { accent-color: #b8a2ff; }
+.lp-load-cancel { border-color: #474351; background: #24232d; color: #eeeaf8; }
+.lp-game-library { margin-top: 32px; padding-top: 24px; border-color: #343440; }
+.lp-library-heading h2 { color: #f5f2fc; }
+.lp-library-count { display: inline-flex; margin-left: 8px; padding: 4px 9px; border: 1px solid #474054; border-radius: 999px; background: #292637; color: #c4b1ff; font-size: 11px; font-weight: 650; vertical-align: 3px; }
+.lp-library-tools { grid-template-columns: minmax(200px, 1fr) auto auto auto; gap: 10px; }
+.lp-library-tools > input, .lp-library-tools > select, .lp-file-filters input, .lp-file-filters select, .lp-setting-row select, .lp-setting-row input, .lp-group-heading select, .lp-mapping-row select, .lp-system-choice select { border-color: #3c3d49; background: #20212a; color: #f0edf8; }
+.lp-library-tools > input::placeholder, .lp-file-filters input::placeholder { color: #8d8b9a; }
+.lp-library-tools > select { min-width: 154px; min-height: 44px; padding: 0 30px 0 12px; border: 1px solid #3c3d49; border-radius: 11px; font: inherit; font-size: 12px; }
+.lp-library-filters { grid-column: 1 / -1; grid-row: 2; }
+.lp-chip-group { gap: 7px; }
+.lp-filter-chip { border-color: #393946; background: #1b1c25; color: #c8c4d3; }
+.lp-filter-chip[aria-pressed="true"] { border-color: #9d86ea; background: #39304f; color: #eee8ff; }
+.lp-favorite-filter { display: inline-flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #3c3d49; border-radius: 11px; background: #20212a; color: #d8d4e3; font-size: 12px; font-weight: 650; cursor: pointer; }
+.lp-favorite-filter input { width: 17px; height: 17px; margin: 0; accent-color: #b8a2ff; }
+.lp-view-toggle .lp-button[aria-pressed="true"] { border-color: #9077d1; background: #39304f; color: #f2ebff; }
+.lp-game-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.lp-game-card { display: grid; grid-template-columns: 80px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 10px 13px; padding: 12px; border-color: #363743; border-radius: 15px; background: linear-gradient(145deg, #20212a, #191a22); box-shadow: 0 8px 20px rgba(0, 0, 0, .14); }
+.lp-game-card:hover { border-color: #62527f; background: linear-gradient(145deg, #272433, #1b1c24); }
+.lp-game-cover { display: grid; grid-column: 1; grid-row: 1 / span 2; min-height: 94px; place-items: center; overflow: hidden; border: 1px solid rgba(194, 174, 255, .18); border-radius: 12px; background: radial-gradient(circle at 75% 20%, rgba(191, 255, 209, .18) 0 2px, transparent 3px), radial-gradient(circle at 24% 66%, rgba(207, 179, 255, .26) 0 3px, transparent 4px), repeating-linear-gradient(135deg, transparent 0 10px, rgba(181, 160, 255, .055) 10px 11px), linear-gradient(145deg, #4b3b6d, #242536 72%); }
+.lp-game-cover span { max-width: 95%; padding: 5px 6px; overflow: hidden; border: 1px solid rgba(240, 231, 255, .16); border-radius: 6px; background: rgba(17, 16, 26, .58); color: #ded2ff; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-overflow: ellipsis; white-space: nowrap; }
+.lp-game-card-main { grid-column: 2; grid-row: 1; align-content: center; gap: 6px; }
+.lp-game-card-title { color: #f4f1fc; font-size: 13px; }
+.lp-game-card-meta { color: #aaa7b7; font-size: 11px; }
+.lp-source-badge { background: #2b2936; color: #c1b4e5; font-weight: 600; }
+.lp-game-card-actions { grid-column: 2; grid-row: 2; display: flex; align-items: center; gap: 6px; margin: 0; }
+.lp-game-card-actions .lp-button { min-height: 38px; padding-inline: 10px; font-size: 11px; }
+.lp-game-play { border-color: #9b84e6; background: #a88df5; color: #17121f !important; font-weight: 750; }
+.lp-game-play:hover:not(:disabled) { border-color: #c1adff; background: #bba8ff; color: #17121f !important; }
+.lp-game-favorite.is-favorite { border-color: #6d5a3c; background: #332a22; color: #f2cd85; }
+.lp-game-favorite.is-favorite svg { fill: currentColor; }
+.lp-game-grid[data-view="list"] { grid-template-columns: 1fr; gap: 8px; }
+.lp-game-grid[data-view="list"] .lp-game-card { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; grid-template-rows: 1fr; align-items: center; border: 1px solid #343440; border-radius: 13px; background: #1b1c25; }
+.lp-game-grid[data-view="list"] .lp-game-cover { grid-column: 1; grid-row: 1; min-height: 64px; }
+.lp-game-grid[data-view="list"] .lp-game-card-main { grid-column: 2; grid-row: 1; }
+.lp-game-grid[data-view="list"] .lp-game-card-actions { grid-column: 3; grid-row: 1; }
+.lp-library-empty { color: #aaa8b9; }
+.lp-compatibility-card { margin-top: 16px; padding: 0 16px; border: 1px solid #383743; border-radius: 14px; background: #191a22; color: #e8e4f4; }
+.lp-compatibility-card summary { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; font-size: 13px; font-weight: 700; }
+.lp-compatibility-hint { color: #aaa8b9; font-size: 11px; font-weight: 500; }
+.lp-compatibility-content { max-width: 800px; padding: 0 0 14px; color: #aaa8b9; font-size: 12px; line-height: 1.65; }
+.lp-compatibility-content p { margin: 8px 0 0; }
+.lp-file-manager { border-radius: 16px; }
+.lp-file-manager .lp-library-heading h2, .lp-panel-heading h1 { color: #f4f1fc; }
+.lp-file-manager .lp-library-empty, .lp-panel-intro, .lp-path-group summary, .lp-folder-name { color: #c0bbce; }
+.lp-file-tree, .lp-path-group, .lp-file-row, .lp-save-row { border-color: #343440; }
+.lp-file-row:hover, .lp-path-group summary:hover { background: #23232d; }
+.lp-file-name, .lp-library-name, .lp-save-name { color: #edeaf7; }
+.lp-file-selection { accent-color: #b8a2ff; }
+.lp-folder-count { background: #2a2935; color: #b9b5c5; }
+.lp-save-warning, .lp-setting-note { color: #f1c879 !important; }
+.lp-play-empty { border-color: #494256; background: #191a22; }
+.lp-play-empty svg { border-color: #494256; background: #292637; color: #c2aeff; }
+.lp-play-empty strong, .lp-loaded-title { color: #f4f1fc; }
+.lp-title-stamp { background: #302a41; color: #c1adff; }
+.lp-player { border-color: #353641; background: #07080b; box-shadow: 0 16px 42px rgba(0, 0, 0, .28); }
+.lp-player iframe { background: #07080b; }
+.lp-controls-panel .lp-settings-group { box-shadow: none; }
+.lp-settings-group h2 { color: #f0edf8; }
+.lp-settings-group p, .lp-control-help, .lp-runtime-help, #controller-status, #controls-scope-note { color: #aaa8b9; }
+.lp-mapping-row, .lp-setting-row, .lp-setting-toggle { color: #d6d2e1; }
+.lp-mapping-row { border-color: #343440; }
+.lp-danger-zone { border-color: #6f423d; background: #2b1e21; }
+.lp-danger-zone h2, .lp-danger-zone p { color: #ffd2c9; }
+.lp-danger-button { border-color: #8c554d; color: #ffd2c9; }
+.lp-touch-preview span { border-color: #474350; background: #322c42; color: #eee6ff; }
+.lp-settings-dialog { border-color: #3a3947; background: #14151c; color: #f4f1fc; box-shadow: 0 24px 80px rgba(0, 0, 0, .5); }
+.lp-settings-dialog::backdrop { background: rgba(4, 4, 9, .72); }
+.lp-settings-heading { border-color: #343440; background: #14151c; }
+.lp-settings-close { border-color: #3b3b47; background: #20212a; color: #f4f1fc; }
+.lp-settings-content .lp-settings-group { border-color: #343440; background: #1a1b23; }
+.lp-inline-link { color: #c5b2ff; }
+.lp-runtime-note { color: #aaa8b9; }
+.lp-console-panel { border-color: #393846; background: #191a22; color: #f4f1fc; }
+.lp-console-heading p:last-child, .lp-console-status { color: #aaa8b9; }
+.lp-console-close { border-color: #393946; background: #22232d; color: #f3efff; }
+.lp-console-output { border-color: #353541; background: #101116; }
+.lp-console-copy { border-color: #9278df; background: #a88df5; color: #17121f !important; }
+.lp-console-copy:hover { background: #bba8ff; }
+.lp-bottom { border-color: #2c2d36; color: #aaa8b9; }
+.lp-bottom-right { color: #aaa8b9; }
+.lp-save-storage-status { color: #aaa8b9; }
+@media (max-width: 760px) {
+  .lp-page { padding: env(safe-area-inset-top, 0px) 16px calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .lp-main { padding-top: 8px; }
+  .lp-layout { grid-template-columns: minmax(0, 1fr); margin-top: 18px; }
+  .lp-aside { display: none; }
+  .lp-drop { min-height: 180px; }
+  .lp-library-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .lp-library-tools > input { grid-column: 1 / -1; grid-row: 1; }
+  .lp-library-tools > select { grid-column: 1; grid-row: 2; width: 100%; }
+  .lp-favorite-filter { grid-column: 2; grid-row: 2; }
+  .lp-library-filters { grid-column: 1 / -1; grid-row: 3; }
+  .lp-view-toggle { grid-column: 1 / -1; grid-row: 4; }
+  .lp-game-grid { grid-template-columns: minmax(0, 1fr); }
+  .lp-game-card { grid-template-columns: 74px minmax(0, 1fr); gap: 8px 11px; padding: 10px; }
+  .lp-game-cover { min-height: 86px; }
+  .lp-game-card-actions { flex-wrap: wrap; }
+  .lp-game-card-actions .lp-button { min-height: 44px; }
+  .lp-game-grid[data-view="list"] .lp-game-card { grid-template-columns: 58px minmax(0, 1fr); }
+  .lp-game-grid[data-view="list"] .lp-game-cover { min-height: 58px; }
+  .lp-game-grid[data-view="list"] .lp-game-card-actions { grid-column: 2; grid-row: 2; }
+  .lp-compatibility-card { padding-inline: 13px; }
+  .lp-compatibility-card summary { align-items: flex-start; flex-direction: column; justify-content: center; gap: 2px; padding-block: 9px; }
+  .lp-tabbar { border-color: #383744; background: rgba(24, 24, 32, .96); box-shadow: 0 -8px 30px rgba(0, 0, 0, .28); }
+  .lp-tab { min-height: 62px; color: #aaa8b9; }
+  .lp-tab[aria-selected="true"] { background: #302a40; color: #f4f1fc; }
+  .lp-tab svg { color: currentColor; }
+  .lp-file-manager { padding: 14px; }
+  .lp-file-actions .lp-button, .lp-file-settings .lp-button, .lp-loaded-actions .lp-button { min-height: 44px; }
+  .lp-loaded { padding: 12px; }
+  .lp-player { height: min(67dvh, 720px); min-height: min(48dvh, 320px); border-radius: 12px; }
+  .lp-settings-dialog { width: 100vw; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+  .lp-settings-sheet { height: 100%; }
+  .lp-settings-heading { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 14px; }
+  .lp-settings-content { padding: 12px 13px calc(20px + env(safe-area-inset-bottom, 0px)); }
+  .lp-bottom { margin-top: 24px; }
+}
+@media (max-width: 380px) {
+  .lp-page { padding-inline: 12px; }
+  .lp-heading { font-size: clamp(31px, 9vw, 38px); }
+  .lp-top-actions { gap: 6px; }
+  .lp-console-toggle { gap: 5px; padding-inline: 9px; }
+  .lp-game-card-actions .lp-button { padding-inline: 8px; }
+  .lp-game-card-actions .lp-game-play { flex: 1 1 80px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-game-card, .lp-game-card:hover { transform: none; }
+}
