@@ -5,8 +5,9 @@
   const manager=$('file-manager'),list=$('file-list'),empty=$('file-empty'),status=$('file-manager-status');
   const supported=Boolean(window.indexedDB);
   let dbPromise,ready,writeQueue=Promise.resolve();
-  const selectedFileIds=new Set(),libraryFilters={system:'',source:''};
-  let libraryView='grid';
+  const selectedFileIds=new Set(),libraryFilters={system:'',source:'',collection:''};
+  let libraryView='grid',detailsRecord=null,detailsPreviewUrl=null;
+  const libraryCoverUrls=[];
   const normalizePath=path=>{
    const parts=[];
    String(path||'').replace(/\\/g,'/').replace(/^\/+/,'').split('/').forEach(part=>{
@@ -19,11 +20,21 @@
   const newId=()=>crypto.randomUUID?.()||Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,'0')).join('');
   const extOf=name=>String(name||'').split('.').pop().toLowerCase();
   const isArchive=name=>['zip','rar'].includes(extOf(name));
-  const systemFor=name=>{
-   const extension=extOf(name);
-   const systems={nes:'nes',fds:'nes',unif:'nes',unf:'nes',smc:'snes',sfc:'snes',gb:'gb',gbc:'gb',gba:'gba',n64:'n64',z64:'n64',nds:'nds',md:'segaMD',gen:'segaMD',cso:'psp',prx:'psp',chd:null,cue:null,bin:null,iso:null,tap:null,dsk:null};
-   return systems[extension]||null;
+  const systems={
+   a52:'atari5200',a26:'atari2600',a78:'atari7800',vb:'vb',vboy:'vb',nes:'nes',fds:'nes',unif:'nes',unf:'nes',
+   smc:'snes',sfc:'snes',swc:'snes',fig:'snes',bs:'snes',st:'snes',gb:'gb',gbc:'gb',dmg:'gb',gba:'gba',
+   n64:'n64',z64:'n64',v64:'n64',u1:'n64',ndd:'n64',nds:'nds',md:'segaMD',mdx:'segaMD',gen:'segaMD',smd:'segaMD',
+   sms:'segaMS',gg:'segaGG',sg:'segaMS',sgd:'segaMS','32x':'sega32x',col:'coleco',cv:'coleco',lnx:'lynx',ngp:'ngp',
+   ngc:'ngp',pce:'pce',ws:'ws',wsc:'ws',pc2:'ws',j64:'jaguar',jag:'jaguar',adf:'amiga',adz:'amiga',dms:'amiga',
+   fdi:'amiga',ipf:'amiga',hdf:'amiga',hdz:'amiga',lha:'amiga',uae:'amiga',d64:'c64',d71:'c64',d80:'c64',d81:'c64',
+   d82:'c64',g64:'c64',g41:'c64',x64:'c64',nib:'c64',d2m:'c64',d4m:'c64',t64:'c64',tcrt:'c64',prg:'c64',p00:'c64',
+   crt:'c64',cmd:'c64',vfl:'c64',vsf:'c64',sna:'cap32',cdt:'cap32',cpr:'cap32',voc:'cap32',kcr:'crocods',p:'81',
+   z80:'fuse',rzx:'fuse',scl:'fuse',trd:'fuse',wad:'prboom',iwad:'prboom',pwad:'prboom',cso:'psp',prx:'psp',elf:'psp',conf:'dos'
   };
+  const librarySystemNames=new Map(Array.from($('core-select').options,option=>[option.value,option.textContent]));
+  const systemFor=name=>systems[extOf(name)]||null;
+  const isTitleFile=record=>Boolean(record.system||systemFor(record.name)||isArchive(record.name)||['bin','cue','chd','iso','tap','dsk','html','htm','js','py','swf'].includes(extOf(record.name)));
+  const libraryKey=record=>normalizePath(record.path).toLocaleLowerCase();
   function openDb(){
    if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{
     const request=window.indexedDB.open(DB_NAME,DB_VERSION);
@@ -96,7 +107,11 @@
   async function writeRecord(record){
    const db=await openDb(),records=await getPathRecords(record.normalizedPath),previous=records.filter(item=>!item.superseded).sort((a,b)=>b.addedAt-a.addedAt)[0];
    if(previous&&previous.addedAt>record.addedAt)return{id:previous.id,duplicate:true,record:previous};
-   if(previous&&previous.size===record.size&&previous.hash&&previous.hash===record.hash)return{id:previous.id,duplicate:true,record:previous};
+   if(previous&&previous.handleRef&&record.handleRef&&previous.size===record.size&&previous.lastModified===record.lastModified&&typeof previous.handleRef.isSameEntry==='function'){
+    try{if(await previous.handleRef.isSameEntry(record.handleRef))return{id:previous.id,duplicate:true,record:previous}}
+    catch(error){window.__retrotitlesLog?.('warn','Could not compare a stored file handle: '+error.message,'file-index')}
+   }
+   if(previous&&record.hash&&previous.size===record.size&&previous.hash&&previous.hash===record.hash)return{id:previous.id,duplicate:true,record:previous};
    if(previous?.blob&&!record.blob&&!record.hash)return{id:previous.id,duplicate:true,record:previous};
    if(previous&&!window.confirm('Replace "'+previous.path+'" with the dropped or selected file?')){
     return{id:previous.id,duplicate:true,replacementDeclined:true,record:previous};
@@ -136,11 +151,11 @@
     const name=path.split('/').pop(),blob=file instanceof Blob?file:null;
     if(!blob&&!input.handleRef)throw new Error('Could not read '+name+'.');
     const record={
-     id:newId(),path,name,size:Number(file.size)||0,type:file.type||'application/octet-stream',
+     id:newId(),path,name,size:Number(file.size)||0,type:file.type||'application/octet-stream',lastModified:Number(file.lastModified)||0,
      source,parentArchiveId,system:systemFor(name),addedAt:Date.now(),normalizedPath:path.toLowerCase(),
      hash:null,blob:input.handleRef?null:blob,handleRef:input.handleRef||null,superseded:false
     };
-    if(blob){
+    if(blob&&!input.handleRef){
      onProgress?.({phase:'hash',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index,total:progressTotal});
      record.hash=await hashBlob(blob,(done,total)=>{
       onProgress?.({phase:'hash',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes+done:index+(total?done/total:1),total:progressTotal});
@@ -154,8 +169,8 @@
     }
     results.push(saved.record);
     completedBytes+=Number(file.size)||0;
-    onProgress?.({phase:'save',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index+1,total:progressTotal});
-    if(saved.duplicate||!isArchive(name)||depth>=5)continue;
+    onProgress?.({phase:'save',fileName:path,fileIndex:index+1,fileCount:inputs.length,done:totalBytes?completedBytes:index+1,total:progressTotal,direct:Boolean(input.handleRef)});
+    if(saved.duplicate||!isArchive(name)||depth>=5||source==='backup')continue;
     if(!extractArchive)continue;
     const extracted=await extractArchive(file);
     if(!extracted.length)continue;
@@ -253,17 +268,8 @@
   }
   function makeButton(text,label,action,iconName=''){
    const button=document.createElement('button');button.type='button';button.className='lp-button';
-   const iconPaths={
-    replace:'M20 7v5h-5M4 17v-5h5m-4.1-3A8 8 0 0 1 19 7l1 5M4 12l1 5a8 8 0 0 0 14.1 3',
-    play:'M8 5v14l11-7z'
-   };
-   if(iconPaths[iconName]){
-    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
-    icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');
-    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-    path.setAttribute('d',iconPaths[iconName]);
-    icon.append(path);button.append(icon);
-   }
+   const icon=iconName&&window.RetrotitlesIcons?.create(iconName);
+   if(icon)button.append(icon);
    button.append(document.createTextNode(text));
    if(label)button.setAttribute('aria-label',label);
    button.onclick=action;return button;
@@ -282,9 +288,66 @@
     file=await record.handleRef.getFile();
    }
    if(!file)throw new Error('The local data for '+record.name+' is no longer available.');
-   return new File([file],record.name,{type:record.type,lastModified:record.addedAt});
+   return new File([file],record.name,{type:record.type,lastModified:record.lastModified||record.addedAt});
+  }
+  async function readLibraryState(){
+   const stored=await getMetadata('library-state');
+   return stored&&typeof stored==='object'?{
+    favorites:Array.isArray(stored.favorites)?stored.favorites:[],
+    recent:stored.recent&&typeof stored.recent==='object'?stored.recent:{},
+    games:stored.games&&typeof stored.games==='object'&&!Array.isArray(stored.games)?stored.games:{}
+   }:{favorites:[],recent:{},games:{}};
+  }
+  async function writeLibraryState(state){
+   const db=await openDb(),transaction=db.transaction(META,'readwrite');
+   transaction.objectStore(META).put({key:'library-state',value:state});
+   await transactionDone(transaction);
+  }
+  function metadataTokens(value){
+   const seen=new Set();
+   return String(value||'').split(/[;,\n]/).map(item=>item.trim().slice(0,32)).filter(item=>{
+    const key=item.toLocaleLowerCase();if(!key||seen.has(key)||seen.size>=8)return false;seen.add(key);return true;
+   });
+  }
+  function openGameDetails(record,game={}){
+   detailsRecord=record;$('game-details-name').value=game.title||'';
+   $('game-details-tags').value=(Array.isArray(game.tags)?game.tags:[]).join(', ');
+   $('game-details-collections').value=(Array.isArray(game.collections)?game.collections:[]).join(', ');
+   $('game-details-cover').value='';$('game-details-remove-cover').checked=false;$('game-details-status').textContent='';
+   const preview=$('game-details-cover-preview');
+   if(detailsPreviewUrl)URL.revokeObjectURL(detailsPreviewUrl);detailsPreviewUrl=null;
+   if(game.coverBlob instanceof Blob&&game.coverBlob.type.startsWith('image/')){
+    detailsPreviewUrl=URL.createObjectURL(game.coverBlob);preview.src=detailsPreviewUrl;preview.hidden=false;
+   }else{preview.removeAttribute('src');preview.hidden=true}
+   $('game-details-dialog').showModal();
+  }
+  async function saveGameDetails(event){
+   event.preventDefault();
+   if(!detailsRecord)return;
+   const status=$('game-details-status'),file=$('game-details-cover').files?.[0],key=libraryKey(detailsRecord);
+   if(file&&(file.size>12*1024*1024||!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type))){status.textContent='Choose a PNG, JPEG, WebP, or GIF cover no larger than 12 MB.';return}
+   try{
+    const state=await readLibraryState(),previous=state.games[key]||{},title=$('game-details-name').value.trim().slice(0,120);
+    const game={title,tags:metadataTokens($('game-details-tags').value),collections:metadataTokens($('game-details-collections').value)};
+    if($('game-details-remove-cover').checked)game.coverBlob=null;
+    else if(file)game.coverBlob=file;
+    else if(previous.coverBlob instanceof Blob)game.coverBlob=previous.coverBlob;
+    if(!game.title&&!game.tags.length&&!game.collections.length&&!game.coverBlob)delete state.games[key];
+    else state.games[key]=game;
+    await writeLibraryState(state);$('game-details-dialog').close();await refresh();msg('Saved details for '+(title||detailsRecord.name)+'.');
+   }catch(error){status.textContent='Could not save game details: '+error.message;window.__retrotitlesLog?.('error','Could not save game details: '+error.message,'library')}
+  }
+  async function markPlayed(record){
+   const state=await readLibraryState();state.recent[libraryKey(record)]=Date.now();
+   await writeLibraryState(state);window.dispatchEvent(new CustomEvent('library-updated'));
+  }
+  async function toggleFavorite(record){
+   const state=await readLibraryState(),key=libraryKey(record),favorites=new Set(state.favorites);
+   if(favorites.has(key))favorites.delete(key);else favorites.add(key);
+   state.favorites=Array.from(favorites);await writeLibraryState(state);await refresh();
   }
   async function openRecord(record,systemOverride=''){
+   await markPlayed(record);
    return openFile(await getRecordFile(record),record,systemOverride);
   }
   async function openFolderRecord(path){
@@ -294,6 +357,7 @@
     .filter(record=>!record.superseded&&record.normalizedPath.startsWith(prefix))
     .sort((a,b)=>a.path.localeCompare(b.path));
    if(!records.length)throw new Error('No stored files were found in '+folderPath+'.');
+   await markPlayed({path:folderPath});
    const files=[],paths=[];
    for(const record of records){
     files.push(await getRecordFile(record));
@@ -301,51 +365,102 @@
    }
    return openFolder(files,paths);
   }
-  function renderLibrary(records){
-   const search=$('library-search').value.trim().toLocaleLowerCase();
+  function renderLibrary(records,state){
+   const search=$('library-search').value.trim().toLocaleLowerCase(),favoriteOnly=$('library-favorites').checked;
    const current=records.filter(record=>!record.superseded);
-   const systems=[...new Set(current.filter(record=>record.system).map(record=>record.system))].sort();
-   const sources=[...new Set(current.map(record=>record.source))].sort();
+   const directoryContents=new Map();
+   current.forEach(record=>{
+    const parts=normalizePath(record.path).split('/').filter(Boolean);
+    for(let index=0;index<parts.length-1;index++){
+     const folderPath=parts.slice(0,index+1).join('/');
+     if(!directoryContents.has(folderPath.toLowerCase()))directoryContents.set(folderPath.toLowerCase(),{path:folderPath,records:[]});
+     directoryContents.get(folderPath.toLowerCase()).records.push(record);
+    }
+   });
+   const webProjectFolders=[];
+   current.filter(record=>/^index\.html?$/i.test(record.name)).forEach(record=>{
+    const slash=record.path.lastIndexOf('/');
+    if(slash<0)return;
+    const path=record.path.slice(0,slash),contents=directoryContents.get(path.toLowerCase());
+    if(contents&&contents.records.length>1)webProjectFolders.push({...contents,name:path.split('/').pop(),isLibraryFolder:true,system:'browser',size:contents.records.reduce((total,item)=>total+item.size,0),addedAt:Math.max(...contents.records.map(item=>Number(item.addedAt)||0)),source:'folder'});
+   });
+   const webProjectFiles=new Set(webProjectFolders.flatMap(folder=>folder.records.map(record=>record.path.toLowerCase())));
+   const titles=[...current.filter(record=>isTitleFile(record)&&!webProjectFiles.has(record.path.toLowerCase())),...webProjectFolders];
+   const systems=[...new Set(titles.filter(record=>record.system).map(record=>record.system))].sort();
+   const sources=[...new Set(titles.map(record=>record.source))].sort();
+   const collections=[...new Set(Object.values(state.games||{}).flatMap(game=>Array.isArray(game.collections)?game.collections:[]))].sort((a,b)=>a.localeCompare(b));
    if(!systems.includes(libraryFilters.system))libraryFilters.system='';
    if(!sources.includes(libraryFilters.source))libraryFilters.source='';
-   const renderChips=(container,values,selected,onSelect)=>{
-    const buttons=[['All',''],...values.map(value=>[value,value])].map(([label,value])=>{
+   if(!collections.includes(libraryFilters.collection))libraryFilters.collection='';
+   const systemLabel=value=>value==='browser'?'Browser game':librarySystemNames.get(value)||value;
+   const renderChips=(container,values,selected,onSelect,labelFor=value=>value)=>{
+    const buttons=[['All',''],...values.map(value=>[labelFor(value),value])].map(([label,value])=>{
      const button=document.createElement('button');button.type='button';button.className='lp-filter-chip';button.textContent=label;
      button.setAttribute('aria-pressed',String(selected===value));
      button.addEventListener('click',()=>onSelect(value));return button;
     });
     container.replaceChildren(...buttons);
    };
-   renderChips($('library-system-filters'),systems,libraryFilters.system,value=>{libraryFilters.system=value;refresh().catch(error=>msg('Could not refresh the library: '+error.message,false,'error'))});
-   renderChips($('library-source-filters'),sources,libraryFilters.source,value=>{libraryFilters.source=value;refresh().catch(error=>msg('Could not refresh the library: '+error.message,false,'error'))});
-   const files=current.filter(record=>
-    (!libraryFilters.system||record.system===libraryFilters.system)&&
-    (!libraryFilters.source||record.source===libraryFilters.source)&&
-    (!search||(record.path+' '+record.name+' '+record.source).toLocaleLowerCase().includes(search))
-   ).sort((a,b)=>a.path.localeCompare(b.path)||a.addedAt-b.addedAt);
-   const target=$('library-list');target.dataset.view=libraryView;target.replaceChildren();
-   $('library-empty').hidden=current.length>0&&files.length>0;
-   $('library-empty').textContent=current.length&&!files.length?'No games match these filters.':'No games added yet. Use the + button or drag files in.';
-   for(const record of files){
-    const row=document.createElement('li');row.className='lp-game-card';
-    row.addEventListener('contextmenu',event=>{event.preventDefault();window.__retrotitlesOpenControls?.(record)});
+   const refreshFilter=(key,value)=>{libraryFilters[key]=value;refresh().catch(error=>msg('Could not refresh the library: '+error.message,false,'error'))};
+   renderChips($('library-system-filters'),systems,libraryFilters.system,value=>refreshFilter('system',value),systemLabel);
+   renderChips($('library-source-filters'),sources,libraryFilters.source,value=>refreshFilter('source',value),value=>value.replace(/[-_]/g,' '));
+   renderChips($('library-collection-filters'),collections,libraryFilters.collection,value=>refreshFilter('collection',value));
+   const detailsFor=record=>state.games[libraryKey(record)]||{};
+   const displayName=record=>detailsFor(record).title||record.name;
+   const filtered=titles.filter(record=>{
+    const game=detailsFor(record),tags=Array.isArray(game.tags)?game.tags:[],gameCollections=Array.isArray(game.collections)?game.collections:[];
+    const searchable=[record.path,record.name,displayName(record),record.system?systemLabel(record.system):'',record.source,...tags,...gameCollections].join(' ').toLocaleLowerCase();
+    return (!libraryFilters.system||record.system===libraryFilters.system)&&
+     (!libraryFilters.source||record.source===libraryFilters.source)&&
+     (!libraryFilters.collection||gameCollections.includes(libraryFilters.collection))&&
+     (!favoriteOnly||state.favorites.includes(libraryKey(record)))&&(!search||searchable.includes(search));
+   });
+   const sort=$('library-sort').value;
+   filtered.sort((a,b)=>{
+    if(sort==='name')return displayName(a).localeCompare(displayName(b),undefined,{sensitivity:'base'});
+    if(sort==='added')return b.addedAt-a.addedAt||displayName(a).localeCompare(displayName(b));
+    return (state.recent[libraryKey(b)]||b.addedAt)-(state.recent[libraryKey(a)]||a.addedAt)||displayName(a).localeCompare(displayName(b));
+   });
+   $('library-count').textContent=titles.length+' game'+(titles.length===1?'':'s');
+   const target=$('library-list');target.dataset.view=libraryView;
+   libraryCoverUrls.forEach(url=>URL.revokeObjectURL(url));libraryCoverUrls.length=0;target.replaceChildren();
+   $('library-empty').hidden=filtered.length>0;
+   $('library-empty').textContent=titles.length===0?'Your library is ready for its first game. Add a supported file, folder, or archive.':favoriteOnly&&!filtered.length?'No favorites saved yet. Tap Save on a game to keep it close.':'No games match these filters. Try another search or system.';
+   for(const record of filtered){
+    const key=libraryKey(record),game=detailsFor(record),titleText=displayName(record),isFavorite=state.favorites.includes(key),row=document.createElement('li');row.className='lp-game-card';
+    row.addEventListener('contextmenu',event=>{if(record.isLibraryFolder)return;event.preventDefault();window.__retrotitlesOpenControls?.(record)});
+    const cover=document.createElement('div');cover.className='lp-game-cover';cover.setAttribute('aria-hidden','true');
+    if(game.coverBlob instanceof Blob&&game.coverBlob.type.startsWith('image/')){
+     cover.classList.add('has-cover');
+     const image=document.createElement('img');image.className='lp-game-cover-image';image.alt='';image.src=URL.createObjectURL(game.coverBlob);libraryCoverUrls.push(image.src);cover.append(image);
+    }else{
+     const mark=document.createElement('span');mark.textContent=(record.system==='browser'?'WEB':record.system||extOf(record.name)).toUpperCase().slice(0,5);cover.append(mark);
+    }
     const details=document.createElement('div');details.className='lp-game-card-main';
-    const title=document.createElement('span');title.className='lp-game-card-title';title.textContent=record.name;title.title=record.path;
+    const title=document.createElement('span');title.className='lp-game-card-title';title.textContent=titleText;title.title=record.path;
     const meta=document.createElement('span');meta.className='lp-game-card-meta';
-    meta.textContent=record.path+(record.system?' · '+record.system:'')+' · '+sizeLabel(record.size);
+    meta.textContent=(record.isLibraryFolder?'Multi-file browser game':systemLabel(record.system||'')+' · '+sizeLabel(record.size));
     const source=document.createElement('span');source.className='lp-source-badge';source.textContent=record.source.replace(/[-_]/g,' ');
     details.append(title,meta,source);
+    const tags=document.createElement('div');tags.className='lp-game-card-tags';
+    (Array.isArray(game.tags)?game.tags:[]).forEach(value=>{const chip=document.createElement('span');chip.className='lp-game-card-tag';chip.textContent=value;tags.append(chip)});
+    (Array.isArray(game.collections)?game.collections:[]).forEach(value=>{const chip=document.createElement('span');chip.className='lp-game-card-tag is-collection';chip.textContent=value;tags.append(chip)});
+    if(tags.childElementCount)details.append(tags);
     const actions=document.createElement('div');actions.className='lp-game-card-actions';
-    actions.append(makeButton('Open','Open '+record.name,()=>openRecord(record).catch(error=>msg('Could not open file: '+error.message,false,'error'))));
-    if(['exe','com','bat'].includes(extOf(record.name))){
-     actions.append(makeButton('Try DOS','Try running '+record.name+' as a DOS program',()=>openRecord(record,'dos').catch(error=>msg('Could not run '+record.name+' as DOS: '+error.message,false,'error'))));
-    }
-    actions.append(makeButton('Controls','Configure controls for '+record.name,()=>window.__retrotitlesOpenControls?.(record)));
-    row.append(details,actions);target.append(row);
+    const play=makeButton('Play','Play '+titleText,()=>{
+     const opening=record.isLibraryFolder?openFolderRecord(record.path):openRecord(record);
+     opening.catch(error=>msg('Could not open '+titleText+': '+error.message,false,'error'));
+    },'play');
+    play.classList.add('lp-game-play');
+    const favorite=makeButton(isFavorite?'Saved':'Save',(isFavorite?'Remove from':'Add to')+' favorites: '+titleText,()=>toggleFavorite(record).catch(error=>msg('Could not update favorites: '+error.message,false,'error')),'star');
+    favorite.setAttribute('aria-pressed',String(isFavorite));favorite.classList.add('lp-game-favorite');
+    if(isFavorite)favorite.classList.add('is-favorite');
+    actions.append(play,favorite);
+    if(!record.isLibraryFolder)actions.append(makeButton('Controls','Configure controls for '+titleText,()=>window.__retrotitlesOpenControls?.(record)));
+    actions.append(makeButton('Details','Edit details for '+titleText,()=>openGameDetails(record,game),'pencil'));
+    row.append(cover,details,actions);target.append(row);
    }
-   document.querySelectorAll('[data-library-view]').forEach(button=>{
-    button.setAttribute('aria-pressed',String(button.dataset.libraryView===libraryView));
-   });
+   document.querySelectorAll('[data-library-view]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.libraryView===libraryView)));
   }
   function fileRow(record,parentNames){
    const row=document.createElement('li');row.className='lp-library-row lp-file-row';
@@ -400,8 +515,8 @@
     .sort((a,b)=>a.path.localeCompare(b.path)||a.addedAt-b.addedAt);
   }
   async function refresh(){
-   const records=await getAllRecords(),files=visibleRecords(records);
-   renderLibrary(records);
+   const [records,state]=await Promise.all([getAllRecords(),readLibraryState()]),files=visibleRecords(records);
+   renderLibrary(records,state);
    list.replaceChildren();empty.hidden=files.length>0;
    const systems=[...new Set(records.filter(record=>!record.superseded&&record.system).map(record=>record.system))].sort();
    const types=[...new Set(records.filter(record=>!record.superseded).map(record=>extOf(record.name)))].sort();
@@ -460,7 +575,10 @@
    };
    list.classList.add('lp-file-tree');
    list.replaceChildren(...renderNode(root));
-   status.textContent=files.length+' file'+(files.length===1?'':'s')+' stored locally in this browser; nothing is uploaded.';
+   const linkedCount=files.filter(record=>record.handleRef).length,savedCount=files.length-linkedCount;
+   status.textContent=files.length
+    ?files.length+' files indexed here: '+linkedCount+' linked to device files and '+savedCount+' saved as offline copies. Nothing is uploaded.'
+    :'No files indexed. Add a folder to link device files where supported, or import a local offline copy. Nothing is uploaded.';
   }
   async function deleteSelectedFiles(){
    const ids=Array.from(selectedFileIds);
@@ -555,11 +673,82 @@
    $('runtime-cache-clear').onclick=()=>clearRuntimeCache().catch(error=>msg('Could not clear runtime cache: '+error.message,false,'error'));
    return;
   }
+  $('game-details-form').addEventListener('submit',saveGameDetails);
+  $('game-details-cancel').addEventListener('click',()=>$('game-details-dialog').close());
+  $('game-details-close').addEventListener('click',()=>$('game-details-dialog').close());
+  $('game-details-dialog').addEventListener('close',()=>{
+   if(detailsPreviewUrl)URL.revokeObjectURL(detailsPreviewUrl);detailsPreviewUrl=null;
+   $('game-details-cover-preview').removeAttribute('src');$('game-details-cover-preview').hidden=true;
+  });
+  $('game-details-cover').addEventListener('change',event=>{
+   const file=event.target.files?.[0],preview=$('game-details-cover-preview');
+   if(!file)return;
+   if(detailsPreviewUrl)URL.revokeObjectURL(detailsPreviewUrl);
+   detailsPreviewUrl=URL.createObjectURL(file);preview.src=detailsPreviewUrl;preview.hidden=false;
+   $('game-details-remove-cover').checked=false;
+  });
+  const safeBackupPath=value=>{
+   if(typeof value!=='string'||!value.trim()||value.startsWith('/')||value.includes('\\'))return null;
+   const parts=value.split('/');if(parts.some(part=>!part||part==='.'||part==='..'))return null;
+   return parts.join('/');
+  };
+  const safeBackupKey=value=>{
+   const path=safeBackupPath(value);if(!path)return null;
+   const key=path.toLocaleLowerCase();return ['__proto__','constructor','prototype'].includes(key)?null:key;
+  };
+  const cleanBackupTokens=value=>metadataTokens(Array.isArray(value)?value.join(', '):'');
+  async function createBackupSnapshot({includeFiles=false}={}){
+   if(ready)await ready;
+   const [records,state]=await Promise.all([getAllRecords(),readLibraryState()]),files=[];
+   let skippedLinkedFiles=0;
+   if(includeFiles)records.filter(record=>!record.superseded).forEach(record=>{
+    if(record.blob instanceof Blob)files.push({path:record.path,blob:record.blob,type:record.type,lastModified:record.lastModified});
+    else if(record.handleRef)skippedLinkedFiles++;
+   });
+   return{state,files,skippedLinkedFiles};
+  }
+  async function restoreBackupSnapshot({state:incoming,covers=[],files=[]}={}){
+   if(!incoming||typeof incoming!=='object'||Array.isArray(incoming))throw new Error('The library section is invalid.');
+   if(!Array.isArray(files)||!Array.isArray(covers))throw new Error('The backup file list is invalid.');
+   let filesAdded=0,filesSkipped=0;
+   for(const entry of files){
+    const path=safeBackupPath(entry.path);
+    if(!path||!(entry.file instanceof Blob))throw new Error('A restored game file has an invalid path or contents.');
+    const existing=(await getPathRecords(path.toLocaleLowerCase())).some(record=>!record.superseded);
+    if(existing){filesSkipped++;continue}
+    await ingestFiles([{file:entry.file,path}],{source:'backup',emit:false});filesAdded++;
+   }
+   const current=await readLibraryState(),merged={
+    favorites:Array.from(new Set([...current.favorites,...(Array.isArray(incoming.favorites)?incoming.favorites:[]).map(safeBackupKey).filter(Boolean)])),
+    recent:{...current.recent},games:{...current.games}
+   };
+   const importedRecent=incoming.recent&&typeof incoming.recent==='object'&&!Array.isArray(incoming.recent)?incoming.recent:{};
+   Object.entries(importedRecent).slice(0,2000).forEach(([rawKey,value])=>{
+    const key=safeBackupKey(rawKey),timestamp=Number(value);
+    if(key&&Number.isFinite(timestamp)&&timestamp>0)merged.recent[key]=Math.max(Number(merged.recent[key])||0,timestamp);
+   });
+   const coverMap=new Map(covers.filter(item=>item&&typeof item.key==='string'&&item.blob instanceof Blob&&item.blob.type.startsWith('image/')&&item.blob.size<=12*1024*1024).map(item=>[safeBackupKey(item.key),item.blob]).filter(([key])=>key));
+   const incomingGames=incoming.games&&typeof incoming.games==='object'&&!Array.isArray(incoming.games)?incoming.games:{};
+   Object.entries(incomingGames).slice(0,2000).forEach(([rawKey,value])=>{
+    const key=safeBackupKey(rawKey);if(!key||!value||typeof value!=='object'||Array.isArray(value))return;
+    const old=merged.games[key]||{},title=typeof value.title==='string'?value.title.trim().slice(0,120):'';
+    const game={title:title||old.title||'',tags:cleanBackupTokens(value.tags).length?cleanBackupTokens(value.tags):cleanBackupTokens(old.tags),collections:cleanBackupTokens(value.collections).length?cleanBackupTokens(value.collections):cleanBackupTokens(old.collections)};
+    const cover=coverMap.get(key),existingCover=old.coverBlob;
+    if(cover)game.coverBlob=cover;else if(existingCover instanceof Blob&&existingCover.type.startsWith('image/'))game.coverBlob=existingCover;
+    if(!game.title&&!game.tags.length&&!game.collections.length&&!game.coverBlob)delete merged.games[key];
+    else Object.defineProperty(merged.games,key,{value:game,writable:true,enumerable:true,configurable:true});
+   });
+   await writeLibraryState(merged);window.dispatchEvent(new CustomEvent('library-updated'));
+   return{filesAdded,filesSkipped};
+  }
+  window.__retrotitlesFileBackup={createSnapshot:createBackupSnapshot,restoreSnapshot:restoreBackupSnapshot};
   const refreshOnChange=()=>refresh().catch(error=>msg('Could not refresh stored files: '+error.message,false,'error'));
   ['file-search','file-system-filter','file-type-filter','file-source-filter'].forEach(id=>{
    $(id).addEventListener('input',refreshOnChange);$(id).addEventListener('change',refreshOnChange);
   });
   $('library-search').addEventListener('input',refreshOnChange);
+  $('library-favorites').addEventListener('change',refreshOnChange);
+  $('library-sort').addEventListener('change',refreshOnChange);
   $('library-add-files').onclick=()=>$('file-import-button').click();
   $('file-delete-selected').onclick=()=>deleteSelectedFiles().catch(error=>msg('Could not delete selected files: '+error.message,false,'error'));
   document.querySelectorAll('[data-library-view]').forEach(button=>button.addEventListener('click',()=>{
@@ -572,10 +761,10 @@
     const files=await window.__retrotitlesCompatibility.filesFromDirectoryHandle(handle);
     if(!files.length){status.textContent='The selected folder contains no files.';return}
     const skipped=[];
-    status.textContent='Adding '+files.length+' file'+(files.length===1?'':'s')+' from '+handle.name+'…';
-    await ingestFiles(files,{source:'folder',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)});
-    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Added '+files.length+' file'+(files.length===1?'':'s')+' locally.';
-    msg(skipped.length?'Kept existing files where replacement was declined.':'Added '+files.length+' file'+(files.length===1?'':'s')+' to the unified file view.');
+    status.textContent='Linking '+files.length+' file'+(files.length===1?'':'s')+' from '+handle.name+'…';
+    await ingestFiles(files,{source:'file-handle',onProgress:window.__retrotitlesIngestProgress,onReplaceDeclined:path=>skipped.push(path)});
+    status.textContent=skipped.length?'Kept existing files where replacement was declined ('+skipped.length+').':'Linked '+files.length+' file'+(files.length===1?'':'s')+' from '+handle.name+' without copying their contents.';
+    msg(skipped.length?'Kept existing files where replacement was declined.':'Linked '+files.length+' files from '+handle.name+' in the unified file view. The browser may ask permission again when you open them.');
    }).catch(error=>{if(error.name!=='AbortError')msg('Could not add folder: '+error.message,false,'error')});
   };
   $('file-refresh').onclick=refreshOnChange;

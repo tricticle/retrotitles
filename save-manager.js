@@ -205,6 +205,25 @@
    await putBrowserSave(current.key,bytes);current.emulator.gameManager.loadState(bytes);
    await refreshSaveManager();msg('Imported and loaded '+file.name+' for '+current.title+'.');
   }
+  async function exportBrowserSaves(){
+   const entries=await listBrowserSaves(),results=[];
+   for(const entry of entries){
+    if(!/^.+\.state$/i.test(entry.key)||entry.key.includes('/')||entry.key.includes('\\'))continue;
+    const value=await getBrowserSave(entry.key);if(value)results.push({key:entry.key,bytes:saveBytes(value)});
+   }
+   return results;
+  }
+  async function restoreBrowserSaves(entries,{replace=false}={}){
+   let imported=0,skipped=0;
+   for(const entry of entries||[]){
+    if(typeof entry.key!=='string'||!/^.+\.state$/i.test(entry.key)||entry.key.includes('/')||entry.key.includes('\\')||!(entry.bytes instanceof Uint8Array)||!entry.bytes.byteLength)throw new Error('A save state in the backup is invalid.');
+    const existing=await getBrowserSave(entry.key);
+    if(existing&&!replace){skipped++;continue}
+    await putBrowserSave(entry.key,entry.bytes);imported++;
+   }
+   return{imported,skipped};
+  }
+  window.__retrotitlesSaveBackup={exportSaves:exportBrowserSaves,restoreSaves:restoreBrowserSaves,refresh:refreshSaveManager};
   if(window.indexedDB){
    $('save-now').onclick=()=>saveBrowserState().catch(error=>msg('Could not save: '+error.message,false,'error'));
    $('save-import-button').onclick=()=>$('save-import').click();

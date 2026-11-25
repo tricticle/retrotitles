@@ -1,0 +1,18 @@
+{
+  "name": "RetroTitles — Pocket Arcade",
+  "short_name": "RetroTitles",
+  "description": "A private, offline-ready browser game library.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0d13",
+  "theme_color": "#0b0d13",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
